@@ -10,6 +10,10 @@ import { spawnSync } from "node:child_process";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
+import {
+  DataHubEvidenceClient,
+  DataHubGraphQLDocumentTransport,
+} from "../datahub/evidence.js";
 import { loadDataHubAdapter } from "../datahub/load.js";
 import { buildReplayPlan, loadManifest, parseSeedCsv } from "../demo/index.js";
 import { GitHubCheckPublisher } from "../github/checks.js";
@@ -262,6 +266,35 @@ function mergeComparisons(perModel) {
   };
 }
 
+/**
+ * Records the decision in DataHub, but only with explicit approval.
+ *
+ * Without `--record-evidence` this returns the plan and writes nothing. A failed
+ * write is reported as a failed write: it never degrades into a claim that the
+ * evidence was stored, and it never changes the merge decision, which was
+ * already made from the replay and lineage evidence.
+ */
+async function recordDataHubEvidence({ plan, dataHubClient, approved }) {
+  const { graphqlRequest } = await loadDataHubAdapter();
+  const client = new DataHubEvidenceClient({
+    transport: new DataHubGraphQLDocumentTransport({
+      graphql: (query, variables) =>
+        graphqlRequest(dataHubClient.config, query, variables),
+    }),
+  });
+  try {
+    return await client.write(plan, { dryRun: !approved, approved });
+  } catch (error) {
+    return {
+      dryRun: false,
+      approved,
+      written: false,
+      idempotencyKey: plan.idempotencyKey,
+      error: error instanceof Error ? error.message : "DataHub writeback failed",
+    };
+  }
+}
+
 export function parseArgs(argv) {
   const options = {
     repository: process.env.GITHUB_REPOSITORY ?? "",
@@ -273,6 +306,7 @@ export function parseArgs(argv) {
     lineageDepth: 3,
     cwd: process.cwd(),
     publishCheck: false,
+    recordEvidence: false,
     explain: false,
     detailsUrl: "",
   };
@@ -314,6 +348,11 @@ export function parseArgs(argv) {
         break;
       case "--publish-check":
         options.publishCheck = true;
+        break;
+      case "--record-evidence":
+        // This is the explicit approval for the only DataHub write ShadowGraph
+        // performs. Without it the writeback stays a dry run.
+        options.recordEvidence = true;
         break;
       case "--explain":
         options.explain = true;
@@ -466,5 +505,17 @@ export async function analyzePullRequestCommand(options, { log = () => {} } = {}
     dryRun: !options.publishCheck,
   });
 
-  return { evidence, checkRun, publication, outputPath, perModel };
+  const evidenceRecord = await recordDataHubEvidence({
+    plan: result.publications.dataHubEvidence,
+    dataHubClient,
+    approved: options.recordEvidence,
+  });
+  evidence.publications = {
+    ...evidence.publications,
+    dataHubEvidenceRecord: evidenceRecord,
+    dryRun: !options.publishCheck && !options.recordEvidence,
+  };
+  await writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+
+  return { evidence, checkRun, publication, evidenceRecord, outputPath, perModel };
 }

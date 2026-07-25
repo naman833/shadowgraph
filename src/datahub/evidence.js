@@ -145,6 +145,151 @@ export class DataHubEvidenceClient {
   }
 }
 
+const DOCUMENT_URN_PREFIX = "urn:li:document:";
+
+const CREATE_DOCUMENT_MUTATION = `
+  mutation ShadowGraphCreateEvidence($input: CreateDocumentInput!) {
+    createDocument(input: $input)
+  }
+`;
+
+const UPDATE_DOCUMENT_CONTENTS_MUTATION = `
+  mutation ShadowGraphUpdateEvidence($input: UpdateDocumentContentsInput!) {
+    updateDocumentContents(input: $input)
+  }
+`;
+
+const UPDATE_DOCUMENT_RELATED_MUTATION = `
+  mutation ShadowGraphRelateEvidence($input: UpdateDocumentRelatedEntitiesInput!) {
+    updateDocumentRelatedEntities(input: $input)
+  }
+`;
+
+const READ_DOCUMENT_QUERY = `
+  query ShadowGraphReadEvidence($urn: String!) {
+    entity(urn: $urn) {
+      urn
+      ... on Document {
+        subType
+        info {
+          title
+          contents { text }
+          relatedAssets { asset { urn } }
+        }
+      }
+    }
+  }
+`;
+
+const DUPLICATE_DOCUMENT = /already exists/i;
+
+/**
+ * Writes evidence as a DataHub Document over GraphQL.
+ *
+ * The local `mcp-server-datahub` build does not expose `save_document`, so this
+ * uses the GMS document mutations directly. `createDocument` is attempted first
+ * and its duplicate-ID rejection is what triggers the update path, so a retried
+ * CI run updates one record instead of creating a second. Deciding by an
+ * existence query instead would be wrong: DataHub's `exists` field is
+ * search-index backed and lags a write by seconds.
+ *
+ * Every write is read back and its idempotency marker verified before the result
+ * is reported, so a silently-dropped mutation cannot be presented as a
+ * successful writeback.
+ */
+export class DataHubGraphQLDocumentTransport {
+  constructor({ graphql, subType = "Decision" } = {}) {
+    this.graphql = graphql;
+    this.subType = subType;
+  }
+
+  async upsertDocument(plan) {
+    assertInput(
+      typeof this.graphql === "function",
+      "A DataHub GraphQL transport function is required",
+    );
+    assertInput(DATAHUB_URN.test(plan.targetUrn ?? ""), "Document target URN is required");
+    assertInput(
+      plan.targetUrn.startsWith(DOCUMENT_URN_PREFIX),
+      "Evidence target must be a DataHub document URN",
+    );
+
+    const urn = plan.targetUrn;
+    const id = urn.slice(DOCUMENT_URN_PREFIX.length);
+    const title = plan.document.title;
+    const text = plan.document.contents.text;
+    const relatedAssets = plan.document.relatedAssets ?? [];
+
+    let existed = false;
+    try {
+      const created = await this.graphql(CREATE_DOCUMENT_MUTATION, {
+        input: {
+          id,
+          title,
+          subType: this.subType,
+          state: "PUBLISHED",
+          contents: { text },
+          relatedAssets,
+        },
+      });
+      if (created?.createDocument !== urn) {
+        throw new DataHubEvidenceError(
+          `DataHub created ${created?.createDocument ?? "no document"} instead of ${urn}`,
+          "GRAPHQL",
+        );
+      }
+    } catch (error) {
+      if (!DUPLICATE_DOCUMENT.test(error?.message ?? "")) throw error;
+      existed = true;
+      const updated = await this.graphql(UPDATE_DOCUMENT_CONTENTS_MUTATION, {
+        input: { urn, title, contents: { text }, subType: this.subType },
+      });
+      if (updated?.updateDocumentContents !== true) {
+        throw new DataHubEvidenceError(
+          "DataHub did not confirm the evidence document update",
+          "GRAPHQL",
+        );
+      }
+      // Related assets live in a separate aspect, so they are re-asserted on
+      // every write to keep the record consistent with the current decision.
+      await this.graphql(UPDATE_DOCUMENT_RELATED_MUTATION, {
+        input: { urn, relatedAssets },
+      });
+    }
+
+    const readBack = await this.graphql(READ_DOCUMENT_QUERY, { urn });
+    const document = readBack?.entity;
+    if (!document?.info) {
+      throw new DataHubEvidenceError(
+        "The evidence document could not be read back after writing",
+        "GRAPHQL",
+      );
+    }
+    const storedText = document.info?.contents?.text ?? "";
+    if (!storedText.includes(plan.lookup.exactMarker)) {
+      throw new DataHubEvidenceError(
+        "The evidence document read back without its idempotency marker",
+        "GRAPHQL",
+      );
+    }
+
+    return {
+      action: existed ? "updated" : "created",
+      urn,
+      readBack: {
+        urn: document.urn,
+        title: document.info?.title ?? null,
+        markerPresent: true,
+        contentBytes: storedText.length,
+        relatedAssets: (document.info?.relatedAssets ?? [])
+          .map((related) => related?.asset?.urn)
+          .filter(Boolean)
+          .sort(),
+      },
+    };
+  }
+}
+
 /**
  * Adapter for the official DataHub MCP server's save_document tool. Supplying
  * the deterministic target URN makes retries update one document instead of

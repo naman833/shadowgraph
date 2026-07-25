@@ -21,7 +21,7 @@ function log(message) {
 
 try {
   const options = parseArgs(process.argv.slice(2));
-  const { evidence, checkRun, publication, outputPath, perModel } =
+  const { evidence, checkRun, publication, evidenceRecord, outputPath, perModel } =
     await analyzePullRequestCommand(options, { log });
 
   const { decision } = evidence;
@@ -59,6 +59,17 @@ try {
       ? `GitHub Check: dry run, would POST ${checkRun.conclusion} to ${publication.endpoint}`
       : `GitHub Check: published ${publication.conclusion} (${publication.url})`,
   );
+  if (evidenceRecord.dryRun) {
+    log(
+      `DataHub evidence: dry run, would upsert ${evidenceRecord.request.targetUrn}`,
+    );
+  } else if (evidenceRecord.error) {
+    log(`DataHub evidence: NOT recorded - ${evidenceRecord.error}`);
+  } else {
+    log(
+      `DataHub evidence: ${evidenceRecord.action} and read back (${evidenceRecord.urn})`,
+    );
+  }
 
   process.exit(EXIT[decision.conclusion] ?? EXIT.neutral);
 } catch (error) {
