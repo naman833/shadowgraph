@@ -1,7 +1,13 @@
+/**
+ * Replays the golden scenarios through the pipeline as a runnable demo.
+ *
+ * The scenario data is shared with the test suite rather than duplicated, so
+ * the demo and the assertions can never drift apart.
+ */
 import {
   dangerousSemanticReplay,
   safeRefactorReplay,
-} from "../examples/golden-replay.mjs";
+} from "../tests/fixtures/golden-replay.mjs";
 import { runShadowAnalysis } from "../src/pipeline/index.js";
 
 const baseSha = "1".repeat(40);

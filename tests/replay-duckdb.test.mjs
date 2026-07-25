@@ -8,7 +8,7 @@ import {
 import {
   dangerousSemanticReplay,
   safeRefactorReplay,
-} from "./fixtures/replay-golden.mjs";
+} from "./fixtures/golden-replay.mjs";
 
 test("DuckDB replay catches the golden semantic change without a schema change", async () => {
   const replay = await replayCounterfactual(dangerousSemanticReplay);

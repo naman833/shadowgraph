@@ -23,7 +23,7 @@ and non-immutable commit identifiers are rejected.
 Analyze any two local Git commits:
 
 ```bash
-npm run analyze:pr-diff -- \
+npm run detect:changes -- \
   --base HEAD~1 \
   --head HEAD \
   --repository local/shadowgraph \

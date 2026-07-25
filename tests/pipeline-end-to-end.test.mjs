@@ -5,7 +5,7 @@ import { runShadowAnalysis } from "../src/pipeline/index.js";
 import {
   dangerousSemanticReplay,
   safeRefactorReplay,
-} from "./fixtures/replay-golden.mjs";
+} from "./fixtures/golden-replay.mjs";
 
 const baseSha = "1".repeat(40);
 const headSha = "2".repeat(40);

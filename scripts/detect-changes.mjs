@@ -1,3 +1,13 @@
+/**
+ * Extracts the data changes from a pull-request diff and writes them as an
+ * evidence artifact. This is the DETECT stage on its own: it reads two
+ * immutable commits and reports which datasets and columns changed.
+ *
+ * It does not resolve DataHub context, classify consumers, replay, or decide,
+ * so it never produces a merge verdict. It is useful for inspecting detection
+ * on a repository that has no ShadowGraph manifest. For the full pipeline and
+ * a real decision, use `npm run analyze:pr`.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
