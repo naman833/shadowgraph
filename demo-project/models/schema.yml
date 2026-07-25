@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: Order grain with the normalized discount rate and net revenue.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: discount_rate
+        description: Discount as a fraction between 0 and 1.
+        tests: [not_null]
+      - name: net_revenue
+        description: gross_amount after discount, in USD.
+        tests: [not_null]
+
+  - name: fct_order_revenue
+    description: Net revenue aggregated by customer segment.
+    columns:
+      - name: customer_segment
+        tests: [unique, not_null]
+      - name: net_revenue
+        tests: [not_null]
+
+  - name: order_discount_features
+    description: Fraud-model features derived from the discount rate.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: order_discount_ratio
+        description: Expected within [0, 1]; the model was trained on that range.
+        tests: [not_null]

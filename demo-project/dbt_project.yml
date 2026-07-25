@@ -1,0 +1,17 @@
+name: acme_analytics
+version: "1.0.0"
+config-version: 2
+
+profile: acme_analytics
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+
+models:
+  acme_analytics:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
+    features:
+      +materialized: table

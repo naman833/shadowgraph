@@ -1,0 +1,72 @@
+{
+  "version": "1",
+  "project": "acme_analytics",
+  "datahub": {
+    "platform": "dbt",
+    "env": "PROD"
+  },
+  "sources": {
+    "raw.orders": {
+      "table": "raw_orders",
+      "seed": "seeds/orders.csv",
+      "dataset": "acme.raw.orders",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,acme.raw.orders,PROD)",
+      "columns": {
+        "order_id": "BIGINT",
+        "customer_id": "VARCHAR",
+        "order_date": "DATE",
+        "customer_segment": "VARCHAR",
+        "gross_amount": "DOUBLE",
+        "discount_percentage": "DOUBLE"
+      }
+    }
+  },
+  "models": [
+    {
+      "name": "stg_orders",
+      "path": "models/staging/stg_orders.sql",
+      "dataset": "acme_analytics.staging.stg_orders",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:dbt,acme_analytics.staging.stg_orders,PROD)",
+      "replay": {
+        "metrics": {
+          "total_net_revenue": "SUM(net_revenue)",
+          "average_discount_rate": "AVG(discount_rate)"
+        },
+        "distributions": {
+          "median_net_revenue": "MEDIAN(net_revenue)",
+          "max_discount_rate": "MAX(discount_rate)"
+        }
+      }
+    },
+    {
+      "name": "fct_order_revenue",
+      "path": "models/marts/fct_order_revenue.sql",
+      "dataset": "acme_analytics.marts.fct_order_revenue",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:dbt,acme_analytics.marts.fct_order_revenue,PROD)",
+      "replay": {
+        "metrics": {
+          "total_net_revenue": "SUM(net_revenue)",
+          "total_gross_revenue": "SUM(gross_revenue)"
+        },
+        "distributions": {
+          "enterprise_revenue_share": "SUM(net_revenue) FILTER (WHERE customer_segment = 'enterprise') / NULLIF(SUM(net_revenue), 0)"
+        }
+      }
+    },
+    {
+      "name": "order_discount_features",
+      "path": "models/features/order_discount_features.sql",
+      "dataset": "acme_analytics.features.order_discount_features",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:dbt,acme_analytics.features.order_discount_features,PROD)",
+      "replay": {
+        "metrics": {
+          "average_discount_ratio": "AVG(order_discount_ratio)",
+          "high_discount_orders": "SUM(is_high_discount)"
+        },
+        "distributions": {
+          "max_discount_ratio": "MAX(order_discount_ratio)"
+        }
+      }
+    }
+  ]
+}

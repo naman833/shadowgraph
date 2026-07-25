@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw order-entry data landed from the storefront.
+    tables:
+      - name: orders
+        description: One row per customer order at time of purchase.
+        columns:
+          - name: order_id
+            description: Primary key.
+          - name: gross_amount
+            description: Order value before any discount, in USD.
+          - name: discount_percentage
+            description: >-
+              Discount expressed as a WHOLE PERCENTAGE. 25 means 25 percent.
+              Consumers must divide by 100 before arithmetic use.
+          - name: customer_segment
+            description: enterprise or consumer.
