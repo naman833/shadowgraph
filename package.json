@@ -11,6 +11,7 @@
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "analyze:pr": "node scripts/analyze-pr.mjs",
     "analyze:pr-diff": "node scripts/analyze-pr-diff.mjs",
     "demo:golden": "node scripts/run-golden-scenarios.mjs",
     "verify:datahub-mcp": "node scripts/datahub-mcp-smoke.mjs"
