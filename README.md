@@ -7,19 +7,34 @@
 <p align="center"><strong>The pre-merge safety system for organizational data.</strong></p>
 
 ShadowGraph is a DataHub-powered CI gate that turns a proposed data change into
-an evidence-backed merge decision. It is designed to resolve changed datasets
-and columns against DataHub, traverse their true downstream consumers, replay
-the affected lineage subgraph, and block pull requests that silently alter
-critical metrics, dashboards, or ML features.
+an evidence-backed merge decision. It resolves changed datasets and columns
+against DataHub, traverses their true downstream consumers, replays the affected
+lineage subgraph, and blocks pull requests that silently alter critical metrics,
+dashboards, or ML features.
 
-> **Project status:** the local end-to-end engine is implemented: immutable PR
-> ingestion, live DataHub dataset/schema/lineage/owner context, true-consumer
-> classification, bounded DuckDB replay, deterministic pass/block/inconclusive
-> decisions, GitHub Check payloads, and idempotent DataHub evidence plans. The
-> official open-source DataHub MCP Server and Skills are integrated and verified
-> against local DataHub Core. External GitHub publication and DataHub mutation
-> are implemented behind dry-run/approval boundaries but have not been executed
-> because this local repository has no GitHub remote or publication credentials.
+## Proof: two real pull requests
+
+Both change the same file. Both keep every column name and type identical, so
+ordinary schema validation passes either way. ShadowGraph separates them:
+
+| Pull request | Change | ShadowGraph Check |
+| --- | --- | --- |
+| [#1 Treat discount_percentage as a decimal fraction](https://github.com/naman833/shadowgraph/pull/1) | Removes the `/ 100.0` conversion | **Failure — merge blocked** |
+| [#2 Compute the discount rate once in a CTE](https://github.com/naman833/shadowgraph/pull/2) | Moves the same conversion into a CTE | **Success** |
+
+The measured evidence behind #1, from DuckDB replay of the real models against
+the committed seed data:
+
+```text
+metric/total_net_revenue      17311.4075 -> -445403.95
+metric/average_discount_rate       0.149 -> 14.9
+distribution/max_discount_rate      0.35 -> 35
+Severity: critical    Affected downstream assets: 2 (live DataHub)
+Decision: FAILURE - Merge blocked: critical data change risk
+```
+
+#2 produces zero breached checks across all three models, which is the
+false-positive guard: an equivalent refactor must not be blocked.
 
 ## See it work
 
@@ -47,23 +62,98 @@ engine to answer *what actually changes?*
 
 ![ShadowGraph architecture: GitHub PR detection, DataHub context, true-consumer classification, replay, decision, and publication](public/media/shadowgraph-architecture.svg)
 
-The intended production state machine is deliberately small and inspectable:
+The state machine is deliberately small and inspectable:
 
 ```text
 DETECT → RESOLVE → TRACE → REPLAY → COMPARE → DECIDE → RECORD
 ```
 
-## Try the current vertical slice
+### What is live, what is deterministic, what needs approval
 
-Requirements:
+ShadowGraph is explicit about this, because a safety tool that overstates its
+own guarantees is not a safety tool.
 
-- Node.js 22.13 or newer
-- npm
+| Capability | Mode | Meaning |
+| --- | --- | --- |
+| Pull-request ingestion | **Live** | Reads two immutable commit SHAs with `git`. |
+| DataHub identity, schema, lineage, owners | **Live** | GraphQL against a real instance. |
+| DuckDB counterfactual replay | **Live** | Executes both revisions in memory. |
+| Decision policy | **Deterministic** | Pure function of the evidence. Never an LLM. |
+| GitHub Check publishing | **Dry run by default** | Writes only with `--publish-check`. |
+| DataHub evidence writeback | **Approval-gated** | Writes only with `--record-evidence`, then reads the record back. |
+| Ollama explanation | **Optional, advisory** | Cannot change the decision. Absent by default. |
+| Application page evidence | **Deterministic reference data** | So the demo loads without DataHub. |
+
+Two properties matter most. The decision **never** depends on an LLM: no model
+can talk ShadowGraph into passing an unsafe change. And missing or ambiguous
+evidence produces `neutral` with `mergeable: false`, never a pass — if
+ShadowGraph cannot prove a change is safe, it does not claim it is.
+
+## Analyze a real pull request
+
+Requirements: Node.js 22.13 or newer, npm, and a running DataHub instance for
+live context.
 
 ```bash
-git clone <your-fork-or-repository-url>
+git clone https://github.com/naman833/shadowgraph.git
 cd shadowgraph
 npm install
+
+# Ingest the demo project's datasets, lineage, and owners into local DataHub.
+npm run ingest:demo-lineage
+
+# Reproduce the blocked decision. Exit code 1.
+npm run analyze:pr -- \
+  --repository naman833/shadowgraph \
+  --pull-request 1 \
+  --base main \
+  --head demo/dangerous-discount-scale \
+  --output outputs/dangerous.json
+
+# Reproduce the passing decision. Exit code 0.
+npm run analyze:pr -- \
+  --repository naman833/shadowgraph \
+  --pull-request 2 \
+  --base main \
+  --head demo/safe-sql-refactor \
+  --output outputs/safe.json
+```
+
+Exit codes are the gate contract: `0` safe, `1` blocked, `2` inconclusive,
+`3` the command itself failed. `2` is deliberately distinct from `0` so an
+inconclusive run can never be mistaken for a pass.
+
+Publishing a Check is opt-in. Without `--publish-check` the command prints the
+request it would have sent and writes nothing:
+
+```bash
+GITHUB_TOKEN=... npm run analyze:pr -- ... --publish-check
+```
+
+Recording the decision in DataHub is separately opt-in. `--record-evidence` is
+the approval:
+
+```bash
+npm run analyze:pr -- ... --record-evidence
+```
+
+The record is one DataHub Document whose URN is derived from repository, pull
+request, and full head SHA, so a rerun of the same commit updates that document
+instead of adding another. Each write is read back and its idempotency marker
+re-checked before the run reports success:
+
+```text
+DataHub evidence: created and read back (urn:li:document:shadowgraph_bb0027b6…)
+DataHub evidence: updated and read back (urn:li:document:shadowgraph_b7cb305a…)
+```
+
+Add `--explain` for an optional local Ollama summary. It is advisory only, it
+detects an installed model rather than assuming one, and if Ollama is
+unavailable the run proceeds unchanged.
+
+## Try the interactive application
+
+```bash
 npm run dev
 ```
 
@@ -71,21 +161,23 @@ Open [http://localhost:3000](http://localhost:3000), select **Run Shadow
 Analysis**, watch the five analysis stages complete, then switch between
 **Impact graph** and **Execution evidence**.
 
-The current experience demonstrates:
+The page walks through the same scenario visually: the changed SQL, the impacted
+lineage graph, owners, before/after evidence, and the merge decision.
 
-- An interactive pull-request analysis
-- DataHub lineage context visualization
-- Static true-consumer and false-positive classification
-- Immutable GitHub PR diff ingestion and evidence artifacts
-- Before/after counterfactual evidence
-- A merge-blocking decision trace
-- Affected assets and responsible owners
-- Responsive, keyboard-accessible product UI
-- Example JSON and Markdown check outputs
+Its displayed evidence values are deterministic reference data, so the page loads
+whether or not DataHub is running. The application's DataHub routes do query the
+live instance when it is configured:
 
-The browser's current evidence values are deterministic reference data, which
-keeps the hosted demo reliable. The DataHub API routes and MCP verification path
-query live DataHub when it is configured.
+```bash
+curl 'http://localhost:3000/api/datahub/health'
+curl 'http://localhost:3000/api/datahub/entity?q=stg_orders'
+curl -X POST 'http://localhost:3000/api/datahub/lineage' \
+  -H 'content-type: application/json' \
+  -d '{"urn":"urn:li:dataset:(urn:li:dataPlatform:dbt,acme_analytics.staging.stg_orders,PROD)","depth":3}'
+```
+
+Each response carries a `source` field of `live` or `demo`, so it is always clear
+which one produced the answer.
 
 Run the executable dangerous and safe golden paths:
 
@@ -116,6 +208,23 @@ With local DataHub running, verify the official read-only MCP interface:
 npm run verify:datahub-mcp
 ```
 
+## Running it in CI
+
+[`.github/workflows/shadowgraph.yml`](.github/workflows/shadowgraph.yml) runs on
+every pull request with least-privilege permissions: `contents: read` to read the
+code and `checks: write` to publish the result, nothing more.
+
+It checks out the immutable head SHA rather than the moving merge ref, so the
+analysis, the evidence artifact, and the Check all describe one commit. The
+evidence JSON uploads on every run, including failures. The job fails on both
+`failure` and `neutral`, so an inconclusive analysis blocks the merge instead of
+sliding through as a pass.
+
+The workflow targets a **self-hosted runner**, because ShadowGraph reads a
+DataHub instance that a GitHub-hosted runner cannot reach. See
+[docs/self-hosted-runner.md](docs/self-hosted-runner.md) for registration. No
+runner files, tokens, or credentials belong in this repository.
+
 ## DataHub's role
 
 DataHub is not a decorative catalog in ShadowGraph. It is the context and memory
@@ -137,10 +246,10 @@ analyze or who needs to act on the result.
 + discount_percentage as discount_rate
 ```
 
-The type and name remain valid, but the semantic scale changes. ShadowGraph
-traces the affected column, excludes one unrelated downstream asset, and presents
-four true consumers. The reference shadow run reports a `−24.75%` revenue change
-and an ML distribution-drift score of `0.31`, so the merge is blocked.
+The type and name remain valid, but the semantic scale changes. On the real
+pull request above, DataHub's column-level lineage resolves two true consumers —
+a revenue mart and an ML feature table — and the DuckDB replay breaches eight
+policy thresholds, so the merge is blocked.
 
 Sample artifacts are available in [`examples/`](examples/):
 
@@ -179,13 +288,12 @@ tests/                Render and product-contract tests
 4. Bounded DuckDB before/after replay engine
 5. Deterministic pass/block/inconclusive policy
 6. Approval-gated GitHub Check publisher
-7. Approval-gated, idempotent DataHub MCP document writeback
+7. Approval-gated, idempotent DataHub document writeback
 8. Optional local Ollama explanation (`qwen2.5:7b` by default)
 
-Remaining submission operations—not engine implementation—are connecting a
-real GitHub repository, exercising an authorized red/green Check and DataHub
-writeback, hosting the final demo, and recording the submission video. See
-[docs/roadmap.md](docs/roadmap.md).
+Every stage has been exercised against live DataHub and two real pull requests on
+this repository. The remaining submission work is presentational: a hosted
+deployment and the recorded video. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Contributing and security
 

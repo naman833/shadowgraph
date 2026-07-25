@@ -51,22 +51,27 @@ flowchart TB
 
 ## Current implementation
 
-The current repository implements the interactive application and a deterministic
-reference run. Its state progresses through detection, resolution, lineage,
-execution, and decision; the UI renders the changed SQL, impacted graph, owners,
-evidence, and merge outcome.
+Every stage runs for real against two immutable commits. `npm run analyze:pr`
+reads a pull request, resolves the changed dataset in DataHub, traverses
+column-level lineage, replays the affected models in DuckDB, compares the
+results, decides, and publishes a GitHub Check.
 
-The following boundaries are represented by reference data and are not live yet:
+| Boundary | State | Notes |
+| --- | --- | --- |
+| GitHub PR ingestion | Live | Reads two immutable commit SHAs through `git`. |
+| DataHub GraphQL queries | Live | Identity, schema, lineage, and ownership. |
+| SQL/dbt semantic diff | Live | Detects changed column expressions. |
+| DuckDB counterfactual replay | Live | Executes before and after in memory. |
+| Decision policy | Deterministic | No LLM input; fails closed on missing evidence. |
+| GitHub Check publishing | Live, opt-in | Dry run unless `--publish-check`. |
+| DataHub evidence writeback | Live, approval-gated | Requires `--record-evidence`; reads the record back. |
+| Ollama explanation | Optional, advisory | Never affects the decision. |
 
-- GitHub webhook ingestion and Check publishing
-- DataHub MCP/GraphQL queries and evidence writeback
-- SQL/dbt semantic diff parsing
-- DuckDB execution against a sample-data copy
+The interactive application remains a deterministic reference run for
+demonstration, so it loads without any DataHub dependency. The CI path does not
+use it.
 
-This separation is intentional: the product interaction can be tested and
-demonstrated while adapters gain contract tests independently.
-
-## Proposed evidence schema
+## Evidence schema
 
 `examples/blocked-check.json` captures the minimum stable result contract:
 
@@ -91,8 +96,11 @@ source snapshot identifiers, and DataHub writeback URN.
   threshold, owner, and lineage path.
 - **No invented identity:** unresolved assets produce an inconclusive result
   rather than a guessed URN.
-- **Idempotent writeback:** the intended writeback key is repository + PR + SHA,
-  allowing retries without duplicate evidence.
+- **Idempotent writeback:** the writeback key is repository + PR + full head SHA,
+  so retries update one DataHub document instead of accumulating duplicates.
+- **Verified writes:** every evidence write is read back and its idempotency
+  marker re-checked, so a dropped mutation is reported as a failure rather than
+  as a stored record.
 
 ## Deployment shape
 

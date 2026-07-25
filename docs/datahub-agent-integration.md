@@ -43,8 +43,8 @@ smoke test. No token is printed, copied into the repository, or included in the
 result.
 
 The browser UI still presents deterministic reference evidence so the hosted
-demo remains reliable. The DataHub API routes, GraphQL adapter, and MCP smoke
-path use live DataHub when configured.
+demo remains reliable. The DataHub API routes, GraphQL adapter, MCP smoke path,
+and evidence writeback use live DataHub when configured.
 
 The local adapter was also verified against showcase `order_details`: canonical
 name parsing returned `order_details`, schema validation matched `order_id`,
@@ -52,10 +52,41 @@ depth 1 returned one node/edge, and bounded depth 3 returned 25 nodes with 51
 real parent→child edges. Column context returned 25 column consumers and
 hydrated owner metadata for the affected subset.
 
-Evidence writeback uses the official MCP `save_document` contract. Its transport
-derives a deterministic Document URN from repository, PR, and full head SHA, so
-retries update one record. Mutation discovery was verified without writing;
-actual writeback remains approval-gated.
+## Evidence writeback
+
+Writeback derives a deterministic Document URN from repository, PR, and full head
+SHA, so retries update one record instead of appending duplicates. It is
+approval-gated: `npm run analyze:pr` writes nothing unless `--record-evidence`
+is passed, and the transport itself refuses a non-dry-run write without explicit
+approval.
+
+Two transports implement the same plan:
+
+| Transport | Path | Availability |
+| --- | --- | --- |
+| `DataHubGraphQLDocumentTransport` | GMS `createDocument` / `updateDocumentContents` / `updateDocumentRelatedEntities` | Verified against DataHub v1.5.0.6 |
+| `DataHubMcpDocumentTransport` | Official MCP `save_document` tool | Only where the MCP build exposes it |
+
+The GraphQL transport is the default because `mcp-server-datahub@0.6.0` does not
+expose `save_document` — the smoke test reports this as
+`saveDocumentAvailable: false`.
+
+It attempts `createDocument` first and treats the duplicate-ID rejection as the
+signal to update. Branching on an existence query instead would be incorrect:
+DataHub's `exists` field is search-index backed and lags a write by seconds.
+
+Every write is read back and its idempotency marker re-verified before success is
+reported. Verified locally against both real pull requests:
+
+```text
+PR #1 first approved run   -> created, marker present, 3 related assets
+PR #1 repeated approved run -> updated, same URN, still one document
+PR #2 approved run         -> created
+DataHub DOCUMENT search for "ShadowGraph" -> total=2
+```
+
+Two documents for two pull requests, after three approved runs, is the
+idempotency proof.
 
 ## Run locally
 

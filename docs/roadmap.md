@@ -56,21 +56,19 @@ known semantic break exceeds its configured threshold.
 
 ## Phase 4 — CI and memory
 
-Status: **implementation complete; external authorization pending**
+Status: **complete and verified end to end**
 
 - [x] Run change ingestion in a least-privilege GitHub Action
 - [x] Upload commit-scoped analysis evidence as a workflow artifact
 - [ ] Verify GitHub webhook signatures for webhook deployments
 - [x] Build and publish commit-scoped Check runs behind dry-run
 - [x] Route review using DataHub owners
-- [x] Build an idempotent DataHub MCP `save_document` write behind approval
+- [x] Build an idempotent DataHub document write behind approval
 
-The remaining acceptance evidence requires a connected GitHub repository and
-explicit approval to perform the two external writes. Neither has been claimed
-from the local-only verification.
-
-Acceptance: an unsafe PR receives a red check, a safe PR receives green, and
-rerunning the same SHA does not duplicate the DataHub record.
+Acceptance met: pull request #1 received a red Check and #2 received green, both
+published by the pipeline on a self-hosted runner. Rerunning the same head SHA
+with `--record-evidence` updated the existing DataHub document rather than
+creating a second one, leaving exactly one record per pull request.
 
 ## Phase 5 — Assisted remediation
 

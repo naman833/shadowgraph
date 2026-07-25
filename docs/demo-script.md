@@ -1,68 +1,103 @@
 # Demo script — under three minutes
 
-Target runtime: **2 minutes 45 seconds**.
+Target runtime: **2 minutes 40 seconds**. Every number below is produced by the
+real pipeline, so the recording can be a single take with nothing staged.
 
-## 0:00–0:20 — The silent failure
+## Before recording
 
-Open PR `#184` and show the one-line SQL diff.
+1. DataHub is running and healthy: `curl http://localhost:8080/health`
+2. The demo graph is ingested: `npm run ingest:demo-lineage`
+3. The evidence documents exist, so the writeback beat has something to open:
+   `npm run analyze:pr -- --repository naman833/shadowgraph --pull-request 1 --base main --head demo/dangerous-discount-scale --record-evidence`
+4. Two browser tabs open, both real pull requests on this repository:
+   - <https://github.com/naman833/shadowgraph/pull/1> (blocked)
+   - <https://github.com/naman833/shadowgraph/pull/2> (passing)
+5. A terminal in the repository root, font large enough to read.
 
-> “This PR changes how `discount_percentage` is interpreted. The column name
-> and type stay the same, so ordinary schema CI passes—but every value now has a
-> different meaning.”
+## 0:00–0:25 — The change that passes every schema check
 
-## 0:20–0:45 — Start ShadowGraph
+Open pull request #1 and show the diff. It is one file.
 
-Open ShadowGraph and select **Run Shadow Analysis**.
+> "This pull request changes how `discount_percentage` is interpreted: it stops
+> dividing by a hundred. The column name is the same. The type is the same. Every
+> schema test in the world passes this. And every revenue number downstream is now
+> wrong by a factor of a hundred."
 
-> “ShadowGraph resolves the changed field in DataHub and walks its column-level
-> lineage. DataHub supplies the real schemas, downstream assets, and owners.”
+## 0:25–0:50 — The Check that catches it
 
-Let the visible stages advance through detection, resolution, and lineage.
+Scroll to the checks section. Show the red **ShadowGraph change impact —
+Unsafe data change blocked**, then click **Details**.
 
-## 0:45–1:15 — Remove false positives
+> "ShadowGraph blocked the merge. Not with a warning about blast radius — with a
+> measurement."
 
-Point to the impact graph and its four true consumers.
+## 0:50–1:30 — The evidence
 
-> “Five assets were downstream, but one never references this field, so it is
-> excluded. The remaining consumers include a revenue model, business metric,
-> executive dashboard, and ML feature.”
+Show the analysis output in the run log.
 
-## 1:15–1:50 — Show executable evidence
+> "It asked DataHub what actually consumes this column, and got two real
+> downstream assets: a revenue mart and an ML feature table. Then it replayed both
+> versions of the SQL in DuckDB against the project's seed data."
 
-Open **Execution evidence**.
+Point at the numbers:
 
-> “The shadow run compares the old and proposed transformations over 12,440
-> rows. Net revenue falls 24.75 percent and the ML feature's drift score reaches
-> 0.31. Both exceed policy.”
+```text
+metric/total_net_revenue      17311.4075 -> -445403.95
+metric/average_discount_rate       0.149 -> 14.9
+distribution/max_discount_rate      0.35 -> 35
+Severity: critical
+Decision: FAILURE - Merge blocked: critical data change risk
+```
 
-Pause on the measured values and thresholds.
+> "Total net revenue goes negative. That is not an estimate, it is the query
+> result."
 
-## 1:50–2:15 — Block the merge
+## 1:30–2:05 — The part that makes it trustworthy
 
-Show the red merge decision and affected owners.
+Switch to pull request #2. Show the green check.
 
-> “Instead of a vague blast-radius warning, the PR gets a reproducible reason to
-> block and the exact teams that need to review it.”
+> "A gate that blocks everything is useless. This second pull request refactors
+> the *same file* and the same expression — it moves the conversion into a CTE and
+> rewrites the arithmetic. Different SQL, identical results. Zero breached checks
+> across all three models. It passes."
 
-## 2:15–2:35 — Show organizational memory
+> "That is the hard half: knowing the difference between a change that looks
+> dangerous and one that is."
 
-Open `examples/change-evidence.md` or the corresponding DataHub evidence record
-when live writeback is available.
+## 2:05–2:30 — DataHub as the context and memory layer
 
-> “The decision bundle records the commit, DataHub URN, lineage scope,
-> measurements, thresholds, and owners so the next person or agent inherits the
-> reasoning.”
+Open DataHub at <http://localhost:9002> and search `stg_orders`. Show the
+column-level lineage and the owning team.
 
-## 2:35–2:45 — Close
+> "DataHub is what makes this possible. It supplies dataset identity, the
+> column-level lineage that separates true consumers from coincidental
+> neighbours, and the owners who need to review."
 
-> “DataHub tells ShadowGraph what is connected. ShadowGraph proves what will
-> change before production is touched.”
+Search DataHub for `ShadowGraph` and open the decision document.
+
+> "And the decision goes back in. One document per commit, so the next engineer
+> inherits the reasoning instead of rediscovering it. Rerun the same commit and
+> it updates that record rather than piling up duplicates."
+
+## 2:30–2:40 — Close
+
+> "DataHub tells ShadowGraph what is connected. ShadowGraph proves what will
+> change — before production finds out."
+
+## Honesty notes
+
+State these plainly if asked; they are in the README's capability matrix.
+
+- The decision is deterministic. No language model can influence it.
+- Missing or ambiguous evidence returns `neutral`, which blocks the merge. It is
+  never reported as a pass.
+- The application page shows deterministic reference values so it loads without
+  DataHub. The pull-request Checks in this demo are the live path.
+- Say "replay" or "counterfactual", not "simulation": the SQL really executes.
 
 ## Recording notes
 
-- Use a fresh browser window at 1440×900 or similar.
-- Increase cursor size and avoid rapid panning.
-- Keep terminal setup out of the final recording.
-- Record the product interaction in one take, then add captions.
-- If demonstrating the current vertical slice, say “reference replay” rather
-  than implying that the DataHub and DuckDB adapters are already live.
+- Fresh browser window, 1440×900 or similar.
+- Increase cursor size, avoid rapid panning.
+- Keep setup commands out of the final cut.
+- Record in one take, then add captions.
