@@ -1,6 +1,10 @@
-# ShadowGraph
+<p align="center">
+  <img src="public/media/shadowgraph-logo.png" alt="ShadowGraph logo" width="156">
+</p>
 
-**The pre-merge safety system for organizational data.**
+<h1 align="center">ShadowGraph</h1>
+
+<p align="center"><strong>The pre-merge safety system for organizational data.</strong></p>
 
 ShadowGraph is a DataHub-powered CI gate that turns a proposed data change into
 an evidence-backed merge decision. It is designed to resolve changed datasets
@@ -17,6 +21,16 @@ critical metrics, dashboards, or ML features.
 > are implemented behind dry-run/approval boundaries but have not been executed
 > because this local repository has no GitHub remote or publication credentials.
 
+## See it work
+
+<p align="center">
+  <img src="public/media/shadowgraph-demo.gif" alt="ShadowGraph tracing a semantic SQL change and blocking the unsafe merge" width="960">
+</p>
+
+The captured product flow shows the proposed SQL change moving through DataHub
+lineage resolution, counterfactual execution evidence, and a deterministic
+merge-blocking decision.
+
 ## The problem
 
 Schema checks catch dropped columns and incompatible types. They do not catch a
@@ -31,16 +45,7 @@ engine to answer *what actually changes?*
 
 ## How it works
 
-```mermaid
-flowchart LR
-    PR["GitHub pull request"] --> Detect["Detect changed datasets and columns"]
-    Detect --> DH["Resolve assets and lineage in DataHub"]
-    DH --> Filter["Classify true column consumers"]
-    Filter --> Replay["Replay before and after in DuckDB"]
-    Replay --> Decide["Compare schema, quality, metrics, and ML inputs"]
-    Decide --> Check["Publish GitHub Check"]
-    Decide --> Writeback["Write evidence back to DataHub"]
-```
+![ShadowGraph architecture: GitHub PR detection, DataHub context, true-consumer classification, replay, decision, and publication](public/media/shadowgraph-architecture.svg)
 
 The intended production state machine is deliberately small and inspectable:
 
@@ -150,6 +155,7 @@ Sample artifacts are available in [`examples/`](examples/):
 app/                  Interactive ShadowGraph application
 docs/                 Architecture, setup, demo, and judging notes
 examples/             Sample reports and evidence outputs
+public/media/          Logo, architecture diagram, and animated product demo
 tests/                Render and product-contract tests
 .openai/              Sites deployment configuration
 ```
