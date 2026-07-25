@@ -14,6 +14,7 @@
     "analyze:pr": "node scripts/analyze-pr.mjs",
     "analyze:pr-diff": "node scripts/analyze-pr-diff.mjs",
     "demo:golden": "node scripts/run-golden-scenarios.mjs",
+    "ingest:demo-lineage": "node scripts/ingest-demo-lineage.mjs",
     "verify:datahub-mcp": "node scripts/datahub-mcp-smoke.mjs"
   },
   "dependencies": {
