@@ -157,6 +157,12 @@ export function parseSeedCsv(text, columnTypes) {
       if (raw === "") {
         row[name] = null;
       } else if (type === "BIGINT" || type === "INTEGER") {
+        // Validated before conversion so a malformed cell surfaces as an
+        // invalid demo project rather than a raw BigInt SyntaxError.
+        assert(
+          /^-?\d+$/.test(raw),
+          `Seed row ${index + 1} column ${name} is not an integer`,
+        );
         // DuckDB integer columns are bound as BigInt to avoid precision loss.
         row[name] = BigInt(raw);
       } else if (type === "DOUBLE" || type === "REAL" || type === "FLOAT") {
