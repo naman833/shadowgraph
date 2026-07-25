@@ -1149,6 +1149,113 @@ footer {
   font-size: 9px;
 }
 
+/* Keep dense evidence readable on laptop and presentation screens. */
+.topbar-center,
+.connection,
+.eyebrow {
+  font-size: 14px;
+}
+
+.hero p {
+  font-size: 16px;
+}
+
+.run-button {
+  font-size: 15px;
+}
+
+.kicker,
+.file-badge,
+.diff-path,
+.diff code,
+.detected-change code,
+.change-meta dt,
+.change-meta dd,
+.scope-note,
+.graph-caption,
+.decision-pill,
+.metric-card > span,
+.proof div span,
+.observed,
+footer {
+  font-size: 11px;
+}
+
+.panel-heading h2,
+.asset-section-heading h2 {
+  font-size: 18px;
+}
+
+.detected-change strong,
+.evidence-summary p {
+  font-size: 13px;
+}
+
+.detected-change p,
+.segmented button,
+.graph-node strong,
+.graph-overlay p,
+.timeline li strong,
+.merge-card strong,
+.asset-count,
+.asset-row,
+.asset-name span strong {
+  font-size: 12px;
+}
+
+.graph-caption span,
+.graph-node div > span,
+.node-type,
+.metric-card small,
+.timeline-mark,
+.timeline li small,
+.merge-card p,
+.asset-table-head,
+.asset-name > b,
+.asset-name span small,
+.severity {
+  font-size: 10px;
+}
+
+.graph-node small,
+.timeline li div > span,
+.merge-card small,
+.owner i {
+  font-size: 9px;
+}
+
+.graph-overlay strong {
+  font-size: 15px;
+}
+
+.graph-node {
+  width: min(190px, 29%);
+  min-height: 76px;
+}
+
+.graph-node > div {
+  min-width: 0;
+}
+
+.graph-node strong,
+.graph-node div > span {
+  overflow-wrap: anywhere;
+}
+
+.source-node {
+  left: 3%;
+}
+
+.model-node {
+  left: 35%;
+}
+
+.metric-node,
+.dashboard-node,
+.ml-node {
+  right: 3%;
+}
+
 @media (max-width: 1120px) {
   .workspace {
     grid-template-columns: 285px minmax(480px, 1fr);
@@ -1213,6 +1320,7 @@ footer {
   .graph-node {
     left: 50%;
     right: auto;
+    width: 190px;
     transform: translateX(-50%);
   }
 

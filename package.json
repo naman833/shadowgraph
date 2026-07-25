@@ -13,12 +13,10 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "analyze:pr-diff": "node scripts/analyze-pr-diff.mjs",
     "demo:golden": "node scripts/run-golden-scenarios.mjs",
-    "verify:datahub-mcp": "node scripts/datahub-mcp-smoke.mjs",
-    "db:generate": "drizzle-kit generate"
+    "verify:datahub-mcp": "node scripts/datahub-mcp-smoke.mjs"
   },
   "dependencies": {
     "@duckdb/node-api": "1.4.4-r.1",
-    "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
@@ -31,7 +29,6 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
-    "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "react-server-dom-webpack": "19.2.6",
