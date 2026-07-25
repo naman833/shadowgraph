@@ -269,10 +269,8 @@ const ENTITY_FRAGMENT = `
     ownership {
       owners {
         owner {
-          urn
-          type
-          ... on CorpUser { username properties { displayName } }
-          ... on CorpGroup { name properties { displayName } }
+          ... on CorpUser { urn username properties { displayName } }
+          ... on CorpGroup { urn name properties { displayName } }
         }
       }
     }
