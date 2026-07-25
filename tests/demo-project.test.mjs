@@ -26,9 +26,40 @@ const seedRows = parseSeedCsv(
 const seeds = {
   [rawOrders.table]: { columns: rawOrders.columns, rows: seedRows },
 };
+/**
+ * The demo branches rewrite stg_orders.sql on purpose, so this scenario pins the
+ * mainline text of that one model instead of reading the working tree. Reading
+ * the working tree would silently assert a different scenario depending on which
+ * branch is checked out, which is how this first failed in CI. Every other model
+ * comes from disk, because nothing in the demo modifies them.
+ */
+const BASELINE_STG_ORDERS = `-- Normalizes raw orders and derives the discount rate every downstream
+-- model depends on.
+--
+-- raw.orders.discount_percentage is a WHOLE PERCENTAGE (25 means 25%), so it
+-- must be divided by 100 to become a rate usable in arithmetic.
+
+select
+    order_id,
+    customer_id,
+    order_date,
+    customer_segment,
+    gross_amount,
+    discount_percentage,
+    coalesce(discount_percentage, 0) / 100.0 as discount_rate,
+    gross_amount * (1 - coalesce(discount_percentage, 0) / 100.0) as net_revenue
+from {{ source('raw', 'orders') }}
+`;
+
 const committedModels = Object.fromEntries(
-  manifest.models.map((model) => [model.name, readProjectFile(model.path)]),
+  manifest.models.map((model) => [
+    model.name,
+    model.name === "stg_orders"
+      ? BASELINE_STG_ORDERS
+      : readProjectFile(model.path),
+  ]),
 );
+
 
 /**
  * Replaces text that must exist exactly `expected` times in the committed
@@ -58,6 +89,19 @@ const RATE_CTE = `with rated_orders as (
 )
 select
 `;
+
+// The pinned baseline carries the whole-percentage contract that makes the
+// dangerous scenario dangerous. If it ever stops matching the expressions the
+// derivations below rewrite, this is no longer the scenario the demo describes.
+test("the pinned staging baseline encodes the whole-percentage contract", () => {
+  assert.equal(
+    BASELINE_STG_ORDERS.split(" / 100.0").length - 1,
+    2,
+    "the baseline must convert whole percentages in both derived columns",
+  );
+  assert.ok(BASELINE_STG_ORDERS.includes(DISCOUNT_RATE_EXPRESSION));
+  assert.ok(BASELINE_STG_ORDERS.includes(NET_REVENUE_EXPRESSION));
+});
 
 // Drops the percent-to-rate scaling from both derived columns. The projected
 // column list is untouched, so the output schema cannot reveal the change.

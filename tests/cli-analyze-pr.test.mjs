@@ -65,7 +65,36 @@ test("parseArgs keeps external writes disabled by default", () => {
   assert.equal(options.projectDir, "demo-project");
 });
 
-test("parseArgs rejects missing, malformed, and unknown inputs", () => {
+test("parseArgs falls back to GITHUB_REPOSITORY so CI need not pass it", (t) => {
+  const inherited = process.env.GITHUB_REPOSITORY;
+  process.env.GITHUB_REPOSITORY = "acme/from-environment";
+  t.after(() => {
+    if (inherited === undefined) delete process.env.GITHUB_REPOSITORY;
+    else process.env.GITHUB_REPOSITORY = inherited;
+  });
+
+  const options = parseArgs([
+    "--base",
+    "main",
+    "--head",
+    "topic",
+    "--pull-request",
+    "7",
+  ]);
+
+  assert.equal(options.repository, "acme/from-environment");
+});
+
+test("parseArgs rejects missing, malformed, and unknown inputs", (t) => {
+  // parseArgs defaults --repository from GITHUB_REPOSITORY, which CI sets, so
+  // the variable is cleared here to test the flag rather than the environment.
+  const inherited = process.env.GITHUB_REPOSITORY;
+  delete process.env.GITHUB_REPOSITORY;
+  t.after(() => {
+    if (inherited === undefined) delete process.env.GITHUB_REPOSITORY;
+    else process.env.GITHUB_REPOSITORY = inherited;
+  });
+
   assert.throws(
     () => parseArgs(["--base", "main", "--head", "topic", "--pull-request", "1"]),
     /--repository is required/,
