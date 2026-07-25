@@ -12,9 +12,10 @@ critical metrics, dashboards, or ML features.
 > vertical slice, a deterministic SQL/dbt change and impact-analysis engine,
 > and a typed DataHub GraphQL integration boundary with live health, entity,
 > and downstream-lineage API routes. The official open-source DataHub MCP Server
-> and DataHub Skills are integrated and verified against local DataHub Core.
-> GitHub Check publishing, executable DuckDB replay, and DataHub evidence
-> writeback remain in progress.
+> and DataHub Skills are integrated and verified against local DataHub Core. A
+> GitHub Action ingests immutable PR snapshots and uploads detected-change
+> evidence. GitHub Check publishing, executable DuckDB replay, and DataHub
+> evidence writeback remain in progress.
 
 ## The problem
 
@@ -70,6 +71,7 @@ The current experience demonstrates:
 - An interactive pull-request analysis
 - DataHub lineage context visualization
 - Static true-consumer and false-positive classification
+- Immutable GitHub PR diff ingestion and evidence artifacts
 - Before/after counterfactual evidence
 - A merge-blocking decision trace
 - Affected assets and responsible owners
@@ -145,6 +147,7 @@ tests/                Render and product-contract tests
 - [Architecture and trust boundaries](docs/architecture.md)
 - [Local and integration setup](docs/setup.md)
 - [Official DataHub MCP and Skills integration](docs/datahub-agent-integration.md)
+- [GitHub pull-request ingestion](docs/github-action.md)
 - [Golden-path demo scenario](docs/demo-scenario.md)
 - [Under-three-minute demo script](docs/demo-script.md)
 - [Hackathon judging alignment](docs/judging-alignment.md)

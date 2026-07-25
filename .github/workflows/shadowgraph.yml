@@ -1,0 +1,53 @@
+name: ShadowGraph
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify project
+        run: npm test
+
+      - name: Analyze immutable pull-request snapshots
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY: ${{ github.repository }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+        run: >-
+          node scripts/analyze-pr-diff.mjs
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --repository "$REPOSITORY"
+          --pull-request "$PULL_REQUEST"
+          --output outputs/pull-request-analysis.json
+
+      - name: Upload ShadowGraph evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadowgraph-pr-${{ github.event.pull_request.number }}
+          path: outputs/pull-request-analysis.json
+          if-no-files-found: error
+          retention-days: 14

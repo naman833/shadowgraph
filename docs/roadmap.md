@@ -31,10 +31,13 @@ lineage and owners appear in a structured ShadowGraph result.
 
 ## Phase 2 — Change intelligence
 
-- Parse dbt and raw SQL diffs
-- Detect drops, renames, type changes, filters, and semantic-expression changes
-- Map file-level edits to datasets and columns
-- Classify true consumers using column-level lineage and parsed SQL
+Status: **in progress**
+
+- [x] Ingest immutable GitHub PR before/after snapshots
+- [x] Parse dbt and raw SQL diffs
+- [x] Detect drops, renames, type changes, filters, and semantic-expression changes
+- [ ] Map file-level edits to canonical DataHub datasets and columns
+- [ ] Classify live true consumers using column-level lineage and parsed SQL
 
 Acceptance: the reference change produces four true consumers and excludes the
 known unrelated candidate with a machine-readable reason.
@@ -51,10 +54,14 @@ known semantic break exceeds its configured threshold.
 
 ## Phase 4 — CI and memory
 
-- Verify GitHub webhook signatures
-- Publish commit-scoped Check runs and PR summaries
-- Route review using DataHub owners
-- Write an idempotent evidence record back to DataHub
+Status: **foundation implemented**
+
+- [x] Run change ingestion in a least-privilege GitHub Action
+- [x] Upload commit-scoped analysis evidence as a workflow artifact
+- [ ] Verify GitHub webhook signatures for webhook deployments
+- [ ] Publish commit-scoped Check runs and PR summaries
+- [ ] Route review using DataHub owners
+- [ ] Write an idempotent evidence record back to DataHub
 
 Acceptance: an unsafe PR receives a red check, a safe PR receives green, and
 rerunning the same SHA does not duplicate the DataHub record.
