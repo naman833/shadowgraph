@@ -12,10 +12,12 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "analyze:pr-diff": "node scripts/analyze-pr-diff.mjs",
+    "demo:golden": "node scripts/run-golden-scenarios.mjs",
     "verify:datahub-mcp": "node scripts/datahub-mcp-smoke.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@duckdb/node-api": "1.4.4-r.1",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",

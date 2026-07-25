@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
+import { classifyConsumers } from "../src/analysis/classify-consumers.js";
 
 const sourceUrl = new URL("../src/datahub/index.ts", import.meta.url);
 const source = await readFile(sourceUrl, "utf8");
@@ -133,6 +134,222 @@ test("client normalizes a live entity and its owner", async () => {
     name: "Alex Data",
     type: "CORP_USER",
   });
+});
+
+test("dataset identity resolution prefers the canonical qualified name and validates columns", async () => {
+  const fetchImpl = async () =>
+    new Response(
+      JSON.stringify({
+        data: {
+          search: {
+            searchResults: [
+              {
+                entity: {
+                  urn: "urn:li:dataset:(urn:li:dataPlatform:snowflake,other.order_details_archive,PROD)",
+                  type: "DATASET",
+                  name: "order_details_archive",
+                  schemaMetadata: {
+                    fields: [{ fieldPath: "discount_percentage" }],
+                  },
+                },
+              },
+              {
+                entity: {
+                  urn: "urn:li:dataset:(urn:li:dataPlatform:dbt,showcase_ecommerce.order_details,PROD)",
+                  type: "DATASET",
+                  name: "order_details",
+                  schemaMetadata: {
+                    fields: [
+                      {
+                        fieldPath: "discount_percentage",
+                        nativeDataType: "NUMBER",
+                      },
+                      { fieldPath: "order_id", nativeDataType: "NUMBER" },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  const client = new adapter.DataHubClient(config(), fetchImpl);
+  const result = await client.resolveDatasetIdentity("order_details", [
+    "discount_percentage",
+    "missing_field",
+  ]);
+
+  assert.equal(
+    result.entity.urn,
+    "urn:li:dataset:(urn:li:dataPlatform:dbt,showcase_ecommerce.order_details,PROD)",
+  );
+  assert.deepEqual(result.matchedColumns, ["discount_percentage"]);
+  assert.deepEqual(result.missingColumns, ["missing_field"]);
+  assert.equal(result.schemaFields[0].nativeDataType, "NUMBER");
+  assert.match(result.warning, /missing_field/);
+});
+
+test("dataset identity resolution refuses equally ranked ambiguous matches", async () => {
+  const fetchImpl = async () =>
+    new Response(
+      JSON.stringify({
+        data: {
+          search: {
+            searchResults: ["one", "two"].map((suffix) => ({
+              entity: {
+                urn: `urn:li:dataset:(urn:li:dataPlatform:dbt,warehouse_${suffix}.orders,PROD)`,
+                type: "DATASET",
+                name: "orders",
+                schemaMetadata: { fields: [{ fieldPath: "order_id" }] },
+              },
+            })),
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  const client = new adapter.DataHubClient(config(), fetchImpl);
+  const result = await client.resolveDatasetIdentity("orders", ["order_id"], "dbt");
+
+  assert.equal(result.ambiguous, true);
+  assert.equal(result.entity, null);
+  assert.equal(result.candidates.length, 2);
+  assert.match(result.warning, /no canonical identity was selected/i);
+});
+
+test("change context distinguishes column consumers from dataset-lineage-only assets", async () => {
+  const root =
+    "urn:li:dataset:(urn:li:dataPlatform:dbt,showcase_ecommerce.order_details,PROD)";
+  const trueConsumer =
+    "urn:li:dataset:(urn:li:dataPlatform:dbt,showcase_ecommerce.order_finance,PROD)";
+  const lineageOnly =
+    "urn:li:dataset:(urn:li:dataPlatform:dbt,showcase_ecommerce.order_audit,PROD)";
+  const downstreamField = `urn:li:schemaField:(${trueConsumer},net_revenue)`;
+  const requests = [];
+
+  const fetchImpl = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    requests.push(body);
+    if (body.query.includes("ShadowGraphResolveEntity")) {
+      return new Response(
+        JSON.stringify({
+          data: {
+            search: {
+              searchResults: [
+                {
+                  entity: {
+                    urn: root,
+                    type: "DATASET",
+                    name: "order_details",
+                    schemaMetadata: {
+                      fields: [{ fieldPath: "discount_percentage" }],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        }),
+        { status: 200 },
+      );
+    }
+    if (body.query.includes("ShadowGraphEntitiesByUrn")) {
+      return new Response(
+        JSON.stringify({
+          data: {
+            entities: [
+              {
+                urn: trueConsumer,
+                type: "DATASET",
+                name: "order_finance",
+                platform: { name: "dbt" },
+                ownership: {
+                  owners: [
+                    {
+                      owner: {
+                        urn: "urn:li:corpgroup:finance",
+                        type: "CORP_GROUP",
+                        name: "finance",
+                        properties: { displayName: "Finance Analytics" },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }
+
+    const results = body.variables.input.urn.startsWith(
+      "urn:li:schemaField:",
+    )
+      ? [{ degree: 1, entity: { urn: downstreamField, type: "SCHEMA_FIELD" } }]
+      : [
+          { degree: 1, entity: { urn: trueConsumer, type: "DATASET" } },
+          { degree: 1, entity: { urn: lineageOnly, type: "DATASET" } },
+        ];
+    return new Response(
+      JSON.stringify({
+        data: { scrollAcrossLineage: { searchResults: results } },
+      }),
+      { status: 200 },
+    );
+  };
+
+  const client = new adapter.DataHubClient(config(), fetchImpl);
+  const result = await client.resolveChangeContext(
+    [
+      {
+        kind: "column_expression_changed",
+        filePath: "models/marts/order_details.sql",
+        column: "discount_percentage",
+      },
+    ],
+    1,
+  );
+
+  const consumers = result.changes[0].consumers;
+  const affected = consumers.find((consumer) => consumer.urn === trueConsumer);
+  const unrelated = consumers.find((consumer) => consumer.urn === lineageOnly);
+  assert.deepEqual(affected.columnLineage, [
+    {
+      upstreamDataset: "order_details",
+      upstreamColumn: "discount_percentage",
+      downstreamColumn: "net_revenue",
+    },
+  ]);
+  assert.equal(affected.owners[0].name, "Finance Analytics");
+  assert.deepEqual(unrelated.columnLineage, []);
+  assert.deepEqual(
+    classifyConsumers(consumers, [
+      {
+        kind: "column_expression_changed",
+        dataset: "order_details",
+        column: "discount_percentage",
+      },
+    ]).map(({ urn, classification }) => ({ urn, classification })),
+    [
+      { urn: trueConsumer, classification: "true_consumer" },
+      { urn: lineageOnly, classification: "lineage_only" },
+    ],
+  );
+  assert.equal(
+    requests.filter((body) =>
+      body.query.includes("ShadowGraphEntitiesByUrn"),
+    ).length,
+    1,
+  );
+  assert.deepEqual(
+    requests.find((body) =>
+      body.query.includes("ShadowGraphEntitiesByUrn"),
+    ).variables.urns,
+    [trueConsumer],
+  );
 });
 
 test("network-only demo fallback is deterministic and clearly labelled", async () => {

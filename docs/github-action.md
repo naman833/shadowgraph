@@ -39,9 +39,16 @@ JSON evidence records:
 - received, analyzed, and ignored file counts
 - detected dataset/column changes with their source file and confidence
 
-## Current boundary
+## Publication boundary
 
-This milestone performs real PR diff ingestion and produces an artifact. It does
-not yet publish a GitHub Check, comment on the pull request, or block merging.
-Those operations require a GitHub repository and explicit authorization and
-belong to the later CI publishing milestone.
+`src/github/checks.js` builds and publishes commit-scoped Check Runs, routes
+only owners of proven affected assets, and defaults to dry-run. It supports:
+
+- `success` for complete evidence below policy thresholds
+- `failure` for a deterministic unsafe change
+- `neutral` when identity, lineage, or replay evidence is incomplete
+
+The checked-in workflow currently uploads the immutable detection artifact
+without GitHub write permissions. Connecting the publisher requires a real
+GitHub repository, granting `checks: write`, and explicitly opting out of dry
+run. This local repository has not performed that external operation.

@@ -73,6 +73,45 @@ export interface ResolveEntityResult {
   warning?: string;
 }
 
+export interface DataHubSchemaField {
+  fieldPath: string;
+  nativeDataType?: string;
+  description?: string;
+}
+
+export interface DatasetIdentityResolution {
+  hint: string;
+  entity: DataHubEntity | null;
+  candidates?: DataHubEntity[];
+  schemaFields: DataHubSchemaField[];
+  matchedColumns: string[];
+  missingColumns: string[];
+  ambiguous: boolean;
+  source: DataHubSource;
+  warning?: string;
+}
+
+export interface DataHubConsumerContext extends DataHubEntity {
+  inputColumns: string[];
+  columnLineage: Array<{
+    upstreamDataset: string;
+    upstreamColumn: string;
+    downstreamColumn?: string;
+  }>;
+}
+
+export interface DataHubResolvedChangeContext {
+  change: Record<string, unknown>;
+  identity: DatasetIdentityResolution;
+  consumers: DataHubConsumerContext[];
+}
+
+export interface DataHubChangeContext {
+  changes: DataHubResolvedChangeContext[];
+  source: DataHubSource;
+  warnings: string[];
+}
+
 export type FetchLike = (
   input: string | URL | Request,
   init?: RequestInit,
@@ -266,6 +305,9 @@ const ENTITY_FRAGMENT = `
     name
     properties { name description }
     platform { name }
+    schemaMetadata {
+      fields { fieldPath nativeDataType description }
+    }
     ownership {
       owners {
         owner {
@@ -292,6 +334,12 @@ const SEARCH_ENTITY_QUERY = `
     search(input: $input) {
       searchResults { entity { ${ENTITY_FRAGMENT} } }
     }
+  }
+`;
+
+const ENTITIES_BY_URN_QUERY = `
+  query ShadowGraphEntitiesByUrn($urns: [String!]!) {
+    entities(urns: $urns) { ${ENTITY_FRAGMENT} }
   }
 `;
 
@@ -327,6 +375,13 @@ interface RawEntity {
   properties?: { name?: string; description?: string | null } | null;
   platform?: { name?: string } | null;
   ownership?: { owners?: Array<{ owner?: RawOwner | null }> } | null;
+  schemaMetadata?: {
+    fields?: Array<{
+      fieldPath?: string;
+      nativeDataType?: string | null;
+      description?: string | null;
+    }>;
+  } | null;
 }
 
 function decodeUrnPart(part: string): string {
@@ -350,6 +405,149 @@ function datasetNameFromUrn(urn: string): string | undefined {
     tuple.slice(firstComma + 1, lastComma).trim(),
   );
   return qualifiedName.split(".").at(-1) || qualifiedName;
+}
+
+function datasetQualifiedNameFromUrn(urn: string): string | undefined {
+  const prefix = "urn:li:dataset:(";
+  if (!urn.startsWith(prefix) || !urn.endsWith(")")) return undefined;
+  const tuple = urn.slice(prefix.length, -1);
+  const firstComma = tuple.indexOf(",");
+  const lastComma = tuple.lastIndexOf(",");
+  if (firstComma === -1 || lastComma === firstComma) return undefined;
+  return decodeUrnPart(tuple.slice(firstComma + 1, lastComma).trim());
+}
+
+function datasetPlatformFromUrn(urn: string): string | undefined {
+  const match = /^urn:li:dataset:\(urn:li:dataPlatform:([^,]+),/.exec(urn);
+  return match ? decodeUrnPart(match[1]) : undefined;
+}
+
+function normalizeIdentityHint(value: string): string {
+  return decodeUrnPart(value)
+    .trim()
+    .replace(/^[`"[]|[`"\]]$/g, "")
+    .toLowerCase();
+}
+
+function schemaFields(raw: RawEntity): DataHubSchemaField[] {
+  return (
+    raw.schemaMetadata?.fields
+      ?.filter(
+        (field): field is {
+          fieldPath: string;
+          nativeDataType?: string | null;
+          description?: string | null;
+        } => Boolean(field.fieldPath),
+      )
+      .map((field) => ({
+        fieldPath: field.fieldPath,
+        nativeDataType: field.nativeDataType || undefined,
+        description: field.description || undefined,
+      })) ?? []
+  );
+}
+
+function changedColumnHints(change: Record<string, unknown>): string[] {
+  const hints = [
+    ...(typeof change.column === "string" ? [change.column] : []),
+    ...(Array.isArray(change.columns)
+      ? change.columns.filter(
+          (column): column is string => typeof column === "string",
+        )
+      : []),
+  ];
+  return [...new Set(hints.map(normalizeIdentityHint).filter(Boolean))];
+}
+
+function datasetHintFromChange(change: Record<string, unknown>): string {
+  if (
+    typeof change.dataset === "string" &&
+    change.dataset.trim() &&
+    change.dataset !== "unknown"
+  ) {
+    return change.dataset.trim();
+  }
+  if (typeof change.filePath !== "string") return "";
+  return (
+    change.filePath
+      .split(/[\\/]/)
+      .at(-1)
+      ?.replace(/\.(?:sql|ddl)$/i, "") ?? ""
+  );
+}
+
+function platformHintFromChange(
+  change: Record<string, unknown>,
+): string | undefined {
+  if (typeof change.platform === "string" && change.platform.trim()) {
+    return change.platform.trim();
+  }
+  if (
+    typeof change.filePath === "string" &&
+    /(?:^|\/)(?:models|analyses|snapshots)(?:\/|$)/i.test(change.filePath)
+  ) {
+    return "dbt";
+  }
+  return undefined;
+}
+
+function datasetMatchScore(
+  raw: RawEntity,
+  hint: string,
+  columns: string[],
+  platformHint?: string,
+): number {
+  if (!raw.urn) return -1;
+  const normalizedHint = normalizeIdentityHint(hint);
+  const qualifiedName = normalizeIdentityHint(
+    datasetQualifiedNameFromUrn(raw.urn) ?? "",
+  );
+  const leafName = normalizeIdentityHint(
+    raw.name || raw.properties?.name || datasetNameFromUrn(raw.urn) || "",
+  );
+  let score = 0;
+  if (raw.urn.toLowerCase() === normalizedHint) score += 10_000;
+  if (qualifiedName === normalizedHint) score += 2_000;
+  if (leafName === normalizedHint) score += 1_500;
+  if (
+    qualifiedName.endsWith(`.${normalizedHint}`) ||
+    qualifiedName.endsWith(`/${normalizedHint}`)
+  ) {
+    score += 1_000;
+  }
+  if (qualifiedName.includes(normalizedHint)) score += 100;
+  if (
+    platformHint &&
+    normalizeIdentityHint(
+      raw.platform?.name || datasetPlatformFromUrn(raw.urn) || "",
+    ) === normalizeIdentityHint(platformHint)
+  ) {
+    score += 500;
+  }
+
+  const availableFields = new Set(
+    schemaFields(raw).map((field) => normalizeIdentityHint(field.fieldPath)),
+  );
+  score += columns.filter((column) => availableFields.has(column)).length * 25;
+  return score;
+}
+
+function schemaFieldParts(
+  urn: string,
+): { datasetUrn: string; fieldPath: string } | null {
+  const prefix = "urn:li:schemaField:(";
+  if (!urn.startsWith(prefix) || !urn.endsWith(")")) return null;
+  const tuple = urn.slice(prefix.length, -1);
+  const match = /^(urn:li:dataset:\(.*\)),(.*)$/.exec(tuple);
+  if (!match) return null;
+  return {
+    datasetUrn: match[1],
+    fieldPath: decodeUrnPart(match[2]),
+  };
+}
+
+function schemaFieldUrn(datasetUrn: string, fieldPath: string): string {
+  return `urn:li:schemaField:(${datasetUrn},${fieldPath})`;
 }
 
 function lastUrnSegment(urn: string): string {
@@ -573,6 +771,284 @@ export class DataHubClient {
         warning: fallbackWarning(error),
       };
     }
+  }
+
+  /**
+   * Resolves a SQL/dbt dataset hint to a canonical DataHub dataset URN and
+   * validates the changed columns against the catalogued schema.
+   *
+   * Search ordering is never trusted on its own: exact URNs, qualified names,
+   * leaf names, and schema overlap are scored deterministically.
+   */
+  async resolveDatasetIdentity(
+    hint: string,
+    columnHints: string[] = [],
+    platformHint?: string,
+  ): Promise<DatasetIdentityResolution> {
+    const trimmed = hint.trim();
+    if (!trimmed) {
+      throw new DataHubError("Dataset hint cannot be empty", "CONFIG");
+    }
+    const columns = [
+      ...new Set(columnHints.map(normalizeIdentityHint).filter(Boolean)),
+    ];
+
+    try {
+      const data = await graphqlRequest<{
+        search?: { searchResults?: Array<{ entity?: RawEntity | null }> };
+      }>(
+        this.config,
+        SEARCH_ENTITY_QUERY,
+        {
+          input: {
+            type: "DATASET",
+            query: trimmed,
+            start: 0,
+            count: 20,
+          },
+        },
+        this.fetchImpl,
+      );
+      const candidates =
+        data.search?.searchResults
+          ?.map((result) => result.entity)
+          .filter((entity): entity is RawEntity => Boolean(entity?.urn)) ?? [];
+      const ranked = candidates
+        .map((entity) => ({
+          entity,
+          score: datasetMatchScore(
+            entity,
+            trimmed,
+            columns,
+            platformHint,
+          ),
+        }))
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            (left.entity.urn ?? "").localeCompare(right.entity.urn ?? ""),
+        );
+      const best = ranked[0];
+      // A fuzzy DataHub search result without a qualified/name match is not a
+      // safe identity mapping for a merge-blocking decision.
+      if (!best || best.score < 100) {
+        return {
+          hint: trimmed,
+          entity: null,
+          schemaFields: [],
+          matchedColumns: [],
+          missingColumns: columns,
+          ambiguous: false,
+          source: "live",
+          warning: `No canonical DataHub dataset matched "${trimmed}".`,
+        };
+      }
+
+      const fields = schemaFields(best.entity);
+      const availableFields = new Set<string>();
+      for (const field of fields) {
+        const normalized = normalizeIdentityHint(field.fieldPath);
+        availableFields.add(normalized);
+        const leaf = normalized.split(".").at(-1);
+        if (leaf) availableFields.add(leaf);
+      }
+      const matchedColumns = columns.filter((column) =>
+        availableFields.has(column),
+      );
+      const missingColumns = columns.filter(
+        (column) => !availableFields.has(column),
+      );
+      const ambiguous =
+        ranked.length > 1 && ranked[1].score === best.score;
+      if (ambiguous) {
+        const tiedCandidates = ranked
+          .filter((candidate) => candidate.score === best.score)
+          .map((candidate) => normalizeEntity(candidate.entity));
+        return {
+          hint: trimmed,
+          entity: null,
+          candidates: tiedCandidates,
+          schemaFields: [],
+          matchedColumns: [],
+          missingColumns: columns,
+          ambiguous: true,
+          source: "live",
+          warning: `Multiple DataHub datasets matched "${trimmed}" equally; no canonical identity was selected.`,
+        };
+      }
+      return {
+        hint: trimmed,
+        entity: normalizeEntity(best.entity),
+        schemaFields: fields,
+        matchedColumns,
+        missingColumns,
+        ambiguous,
+        source: "live",
+        warning: missingColumns.length
+          ? `DataHub schema does not contain: ${missingColumns.join(", ")}.`
+          : undefined,
+      };
+    } catch (error) {
+      if (!canFallback(this.config, error)) throw error;
+      const fallback = await this.resolveEntity(trimmed);
+      return {
+        hint: trimmed,
+        entity: fallback.entity,
+        schemaFields: [],
+        matchedColumns: [],
+        missingColumns: columns,
+        ambiguous: false,
+        source: fallback.source,
+        warning: fallback.warning,
+      };
+    }
+  }
+
+  private async entitiesByUrn(urns: string[]): Promise<DataHubEntity[]> {
+    const uniqueUrns = [...new Set(urns)].filter((urn) =>
+      urn.startsWith("urn:li:"),
+    );
+    if (!uniqueUrns.length) return [];
+    const data = await graphqlRequest<{
+      entities?: Array<RawEntity | null>;
+    }>(
+      this.config,
+      ENTITIES_BY_URN_QUERY,
+      { urns: uniqueUrns },
+      this.fetchImpl,
+    );
+    return (
+      data.entities
+        ?.filter((entity): entity is RawEntity => Boolean(entity?.urn))
+        .map((entity) => normalizeEntity(entity)) ?? []
+    );
+  }
+
+  /**
+   * Builds the catalog context consumed by classifyConsumers().
+   *
+   * Dataset lineage supplies the complete candidate set. Column-level lineage
+   * then adds authoritative `columnLineage` evidence only to true consumers,
+   * leaving the remaining candidates explicitly available as lineage-only.
+   */
+  async resolveChangeContext(
+    changes: Array<Record<string, unknown>>,
+    depth = 3,
+  ): Promise<DataHubChangeContext> {
+    if (!Array.isArray(changes)) {
+      throw new DataHubError("Changes must be an array", "CONFIG");
+    }
+    const resolvedChanges: DataHubResolvedChangeContext[] = [];
+    const warnings: string[] = [];
+    let source: DataHubSource = "live";
+
+    for (const change of changes) {
+      const datasetHint = datasetHintFromChange(change);
+      if (!datasetHint) {
+        throw new DataHubError(
+          "Each change must include a dataset hint",
+          "CONFIG",
+        );
+      }
+      const identity = await this.resolveDatasetIdentity(
+        datasetHint,
+        changedColumnHints(change),
+        platformHintFromChange(change),
+      );
+      source = identity.source === "demo" ? "demo" : source;
+      if (identity.warning) warnings.push(identity.warning);
+      if (!identity.entity) {
+        resolvedChanges.push({ change, identity, consumers: [] });
+        continue;
+      }
+
+      const datasetLineage = await this.downstreamLineage(
+        identity.entity.urn,
+        depth,
+      );
+      source = datasetLineage.source === "demo" ? "demo" : source;
+      if (datasetLineage.warning) warnings.push(datasetLineage.warning);
+      const consumers = new Map<string, DataHubConsumerContext>();
+      for (const node of datasetLineage.nodes) {
+        consumers.set(node.urn, {
+          ...node,
+          inputColumns: [],
+          columnLineage: [],
+        });
+      }
+
+      const affectedUrns = new Set<string>();
+      for (const upstreamColumn of identity.matchedColumns) {
+        const fieldLineage = await this.downstreamLineage(
+          schemaFieldUrn(identity.entity.urn, upstreamColumn),
+          depth,
+        );
+        source = fieldLineage.source === "demo" ? "demo" : source;
+        if (fieldLineage.warning) warnings.push(fieldLineage.warning);
+
+        for (const node of fieldLineage.nodes) {
+          const field = schemaFieldParts(node.urn);
+          const consumerUrn = field?.datasetUrn ?? node.urn;
+          if (consumerUrn === identity.entity.urn) continue;
+          const existing =
+            consumers.get(consumerUrn) ??
+            ({
+              ...node,
+              urn: consumerUrn,
+              name: field
+                ? datasetNameFromUrn(consumerUrn) || node.name
+                : node.name,
+              inputColumns: [],
+              columnLineage: [],
+            } satisfies DataHubConsumerContext);
+          const evidence = {
+            upstreamDataset: datasetHint,
+            upstreamColumn,
+            downstreamColumn: field?.fieldPath,
+          };
+          const evidenceKey = `${evidence.upstreamDataset}\0${evidence.upstreamColumn}\0${evidence.downstreamColumn ?? ""}`;
+          if (
+            !existing.columnLineage.some(
+              (edge) =>
+                `${edge.upstreamDataset}\0${edge.upstreamColumn}\0${edge.downstreamColumn ?? ""}` ===
+                evidenceKey,
+            )
+          ) {
+            existing.columnLineage.push(evidence);
+          }
+          consumers.set(consumerUrn, existing);
+          affectedUrns.add(consumerUrn);
+        }
+      }
+
+      // Rich metadata and ownership are fetched only for assets proven affected
+      // by column-level lineage, avoiding an N+1 over every lineage candidate.
+      if (source === "live" && affectedUrns.size) {
+        const enriched = await this.entitiesByUrn([...affectedUrns]);
+        for (const entity of enriched) {
+          const existing = consumers.get(entity.urn);
+          if (!existing) continue;
+          consumers.set(entity.urn, {
+            ...existing,
+            ...entity,
+            inputColumns: existing.inputColumns,
+            columnLineage: existing.columnLineage,
+          });
+        }
+      }
+
+      resolvedChanges.push({
+        change,
+        identity,
+        consumers: [...consumers.values()],
+      });
+    }
+
+    return {
+      changes: resolvedChanges,
+      source,
+      warnings: [...new Set(warnings)],
+    };
   }
 
   async downstreamLineage(

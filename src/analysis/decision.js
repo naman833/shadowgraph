@@ -37,6 +37,8 @@ function differenceSeverity(difference) {
  *  consumers?: Array<Record<string, any>>,
  *  comparison?: Record<string, any> | null,
  *  executionStatus?: "passed" | "failed" | "not_run",
+ *  evidenceStatus?: "complete" | "inconclusive",
+ *  inconclusiveReasons?: string[],
  *  policy?: {blockAt?: "medium" | "high" | "critical", requireExecution?: boolean}
  * }} input
  */
@@ -45,16 +47,22 @@ export function decideMerge(input) {
     consumers = [],
     comparison = null,
     executionStatus = comparison ? "passed" : "not_run",
+    evidenceStatus = "complete",
+    inconclusiveReasons = [],
     policy = {},
   } = input;
   const blockAt = policy.blockAt ?? "high";
   const requireExecution = policy.requireExecution ?? true;
   const affected = consumers.filter((consumer) => consumer.affected);
   let severity = "none";
+  let potentialImpactSeverity = "none";
   const reasons = [];
 
   for (const consumer of affected) {
-    severity = maxSeverity(severity, impactSeverity(consumer));
+    potentialImpactSeverity = maxSeverity(
+      potentialImpactSeverity,
+      impactSeverity(consumer),
+    );
   }
   if (affected.length) {
     reasons.push(
@@ -66,17 +74,35 @@ export function decideMerge(input) {
     severity = maxSeverity(severity, differenceSeverity(difference));
   }
   if (comparison?.breached?.length) {
+    severity = maxSeverity(severity, potentialImpactSeverity);
     reasons.push(
       `${comparison.breached.length} counterfactual ${comparison.breached.length === 1 ? "check exceeded" : "checks exceeded"} policy thresholds`,
     );
   }
 
   if (executionStatus === "failed") {
-    severity = maxSeverity(severity, "critical");
+    severity = maxSeverity(maxSeverity(severity, potentialImpactSeverity), "critical");
     reasons.push("Counterfactual execution failed");
   } else if (requireExecution && executionStatus === "not_run" && affected.length) {
-    severity = maxSeverity(severity, "high");
     reasons.push("Execution evidence is required for affected assets");
+  }
+
+  const missingEvidence = [
+    ...(evidenceStatus === "inconclusive" ? inconclusiveReasons : []),
+    ...(requireExecution && executionStatus === "not_run" && affected.length
+      ? ["Required counterfactual replay was not run"]
+      : []),
+  ].filter(Boolean);
+  if (missingEvidence.length > 0 && executionStatus !== "failed") {
+    const uniqueReasons = [...new Set([...reasons, ...missingEvidence])];
+    return {
+      conclusion: "neutral",
+      mergeable: false,
+      severity: severity === "none" ? "unknown" : severity,
+      affectedAssetCount: affected.length,
+      reasons: uniqueReasons,
+      summary: "Shadow analysis inconclusive: required evidence is missing",
+    };
   }
 
   const shouldBlock = LEVELS.indexOf(severity) >= LEVELS.indexOf(blockAt);
@@ -93,4 +119,3 @@ export function decideMerge(input) {
 }
 
 export { LEVELS as SEVERITY_LEVELS };
-

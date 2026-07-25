@@ -8,14 +8,14 @@ and columns against DataHub, traverse their true downstream consumers, replay
 the affected lineage subgraph, and block pull requests that silently alter
 critical metrics, dashboards, or ML features.
 
-> **Project status:** this repository contains a working interactive product
-> vertical slice, a deterministic SQL/dbt change and impact-analysis engine,
-> and a typed DataHub GraphQL integration boundary with live health, entity,
-> and downstream-lineage API routes. The official open-source DataHub MCP Server
-> and DataHub Skills are integrated and verified against local DataHub Core. A
-> GitHub Action ingests immutable PR snapshots and uploads detected-change
-> evidence. GitHub Check publishing, executable DuckDB replay, and DataHub
-> evidence writeback remain in progress.
+> **Project status:** the local end-to-end engine is implemented: immutable PR
+> ingestion, live DataHub dataset/schema/lineage/owner context, true-consumer
+> classification, bounded DuckDB replay, deterministic pass/block/inconclusive
+> decisions, GitHub Check payloads, and idempotent DataHub evidence plans. The
+> official open-source DataHub MCP Server and Skills are integrated and verified
+> against local DataHub Core. External GitHub publication and DataHub mutation
+> are implemented behind dry-run/approval boundaries but have not been executed
+> because this local repository has no GitHub remote or publication credentials.
 
 ## The problem
 
@@ -82,11 +82,23 @@ The browser's current evidence values are deterministic reference data, which
 keeps the hosted demo reliable. The DataHub API routes and MCP verification path
 query live DataHub when it is configured.
 
+Run the executable dangerous and safe golden paths:
+
+```bash
+npm run demo:golden
+```
+
+The dangerous path keeps the same schema while changing total revenue from
+`357` to `-6870` and produces a failed Check payload. The equivalent refactor
+keeps revenue at `357` and produces a successful Check payload. Both external
+publication operations remain dry runs.
+
 ## Validation
 
 ```bash
 npm test
 npm run lint
+npm run demo:golden
 ```
 
 `npm test` creates the Cloudflare-compatible production build and verifies the
@@ -153,17 +165,21 @@ tests/                Render and product-contract tests
 - [Hackathon judging alignment](docs/judging-alignment.md)
 - [Roadmap](docs/roadmap.md)
 
-## Roadmap at a glance
+## Implemented pipeline
 
-1. DataHub MCP/Skills and GraphQL context adapter
-2. SQL and dbt diff classifier
+1. DataHub MCP/Skills and live GraphQL context adapter
+2. SQL/dbt immutable-diff classifier
 3. Column-level true-consumer resolver
-4. DuckDB before/after replay engine
-5. GitHub Check publisher
-6. DataHub evidence-document writeback
-7. Generated compatibility patch and tests
+4. Bounded DuckDB before/after replay engine
+5. Deterministic pass/block/inconclusive policy
+6. Approval-gated GitHub Check publisher
+7. Approval-gated, idempotent DataHub MCP document writeback
+8. Optional local Ollama explanation (`qwen2.5:7b` by default)
 
-The full sequencing and acceptance criteria are in [docs/roadmap.md](docs/roadmap.md).
+Remaining submission operations—not engine implementation—are connecting a
+real GitHub repository, exercising an authorized red/green Check and DataHub
+writeback, hosting the final demo, and recording the submission video. See
+[docs/roadmap.md](docs/roadmap.md).
 
 ## Contributing and security
 

@@ -24,6 +24,7 @@ Run the repository checks with:
 ```bash
 npm test
 npm run lint
+npm run demo:golden
 ```
 
 ## 2. Start DataHub locally
@@ -40,9 +41,9 @@ Open [http://localhost:9002](http://localhost:9002) and sign in with the local
 Quickstart credentials (`datahub` / `datahub`). Confirm that datasets, owners,
 and upstream/downstream lineage are visible.
 
-The showcase datapack provides a rich metadata graph. The planned executable
-replay uses a separately loaded static dataset, such as fiction-retail, because
-metadata alone does not contain warehouse rows.
+The showcase datapack provides a rich metadata graph. DuckDB replay uses
+separately supplied bounded row fixtures because metadata alone does not contain
+warehouse rows.
 
 ## 3. Live integration configuration
 
@@ -57,6 +58,9 @@ DATAHUB_GMS_TOKEN=
 GITHUB_APP_ID=
 GITHUB_PRIVATE_KEY=
 GITHUB_WEBHOOK_SECRET=
+OLLAMA_ENABLED=false
+OLLAMA_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:7b
 ```
 
 `DATAHUB_TOKEN` is consumed by ShadowGraph's GraphQL adapter.
@@ -64,6 +68,10 @@ GITHUB_WEBHOOK_SECRET=
 same local token, but both remain empty in committed examples.
 
 Do not commit tokens, private keys, webhook secrets, or a populated `.env` file.
+
+Ollama is optional and entirely local. When enabled, it summarizes already
+computed evidence; it never decides whether a change passes or blocks. The
+deterministic pipeline works without any LLM or paid API.
 
 ## 4. Verify the official DataHub agent interface
 

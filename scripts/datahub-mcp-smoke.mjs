@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 const MCP_PACKAGE =
   process.env.DATAHUB_MCP_PACKAGE ?? "mcp-server-datahub@0.6.0";
 const REQUEST_TIMEOUT_MS = 60_000;
+const inspectMutations = process.env.DATAHUB_MCP_INSPECT_MUTATIONS === "true";
 
 function unquote(value) {
   const trimmed = value.trim();
@@ -117,10 +118,10 @@ const child = spawn("uvx", [MCP_PACKAGE, "--transport", "stdio"], {
     ...process.env,
     DATAHUB_GMS_URL: connection.url,
     DATAHUB_GMS_TOKEN: connection.token,
-    TOOLS_IS_MUTATION_ENABLED: "false",
+    TOOLS_IS_MUTATION_ENABLED: inspectMutations ? "true" : "false",
     TOOLS_IS_USER_ENABLED: "false",
     DATAHUB_MCP_DOCUMENT_TOOLS_DISABLED: "true",
-    SAVE_DOCUMENT_TOOL_ENABLED: "false",
+    SAVE_DOCUMENT_TOOL_ENABLED: inspectMutations ? "true" : "false",
   },
   stdio: ["pipe", "pipe", "pipe"],
 });
@@ -142,6 +143,9 @@ try {
 
   const listed = await rpc.request("tools/list");
   const toolNames = listed.tools.map((tool) => tool.name);
+  const saveDocumentTool = listed.tools.find(
+    (tool) => tool.name === "save_document",
+  );
   for (const required of [
     "search",
     "get_entities",
@@ -201,6 +205,11 @@ try {
         searchReturnedUrn: true,
         lineageUrn,
         lineageCallSucceeded: true,
+        mutationDiscoveryOnly: inspectMutations,
+        saveDocumentAvailable: Boolean(saveDocumentTool),
+        ...(inspectMutations && saveDocumentTool
+          ? { saveDocumentInputSchema: saveDocumentTool.inputSchema }
+          : {}),
       },
       null,
       2,

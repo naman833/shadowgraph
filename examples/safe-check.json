@@ -2,7 +2,7 @@
   "schema_version": "shadowgraph.check.v1",
   "repository": "acme-data/analytics",
   "pull_request": 185,
-  "commit_sha": "24be701",
+  "commit_sha": "24be70124be70124be70124be70124be70124be7",
   "status": "passed",
   "change": {
     "file": "models/staging/stg_customers.sql",

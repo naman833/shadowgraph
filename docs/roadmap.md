@@ -17,51 +17,57 @@ Status: **implemented**
 
 ## Phase 1 — Live DataHub context
 
-Status: **in progress**
+Status: **implemented and live-verified locally**
 
 - [x] Resolve dataset hints to canonical DataHub URNs
 - [x] Retrieve ownership and bounded downstream lineage
 - [x] Integrate and verify the official DataHub MCP Server and Skills
-- [ ] Resolve column hints and retrieve live schema fields
+- [x] Resolve column hints and retrieve live schema fields
 - [ ] Persist raw adapter responses for reproducible fixtures
-- [ ] Return an explicit inconclusive decision when identity cannot be resolved
+- [x] Return an explicit inconclusive decision when identity cannot be resolved
 
 Acceptance: one showcase-ecommerce asset can be resolved and its downstream
 lineage and owners appear in a structured ShadowGraph result.
 
 ## Phase 2 — Change intelligence
 
-Status: **in progress**
+Status: **implemented**
 
 - [x] Ingest immutable GitHub PR before/after snapshots
 - [x] Parse dbt and raw SQL diffs
 - [x] Detect drops, renames, type changes, filters, and semantic-expression changes
-- [ ] Map file-level edits to canonical DataHub datasets and columns
-- [ ] Classify live true consumers using column-level lineage and parsed SQL
+- [x] Map file-level edits to canonical DataHub datasets and columns
+- [x] Classify live true consumers using column-level lineage and parsed SQL
 
 Acceptance: the reference change produces four true consumers and excludes the
 known unrelated candidate with a machine-readable reason.
 
 ## Phase 3 — Executable replay
 
-- Load a static, license-compatible dataset into DuckDB
-- Materialize the minimal affected before/after subgraph
-- Compare schemas, row counts, null rates, distributions, and selected metrics
-- Add replay manifests and deterministic test fixtures
+Status: **implemented**
+
+- [x] Load bounded typed fixtures into in-memory DuckDB
+- [x] Materialize before/after read-only transformations
+- [x] Compare schemas, row counts, null rates, distributions, and metrics
+- [x] Add dangerous and safe deterministic fixtures
 
 Acceptance: the same commit and fixture produce the same evidence bundle, and a
 known semantic break exceeds its configured threshold.
 
 ## Phase 4 — CI and memory
 
-Status: **foundation implemented**
+Status: **implementation complete; external authorization pending**
 
 - [x] Run change ingestion in a least-privilege GitHub Action
 - [x] Upload commit-scoped analysis evidence as a workflow artifact
 - [ ] Verify GitHub webhook signatures for webhook deployments
-- [ ] Publish commit-scoped Check runs and PR summaries
-- [ ] Route review using DataHub owners
-- [ ] Write an idempotent evidence record back to DataHub
+- [x] Build and publish commit-scoped Check runs behind dry-run
+- [x] Route review using DataHub owners
+- [x] Build an idempotent DataHub MCP `save_document` write behind approval
+
+The remaining acceptance evidence requires a connected GitHub repository and
+explicit approval to perform the two external writes. Neither has been claimed
+from the local-only verification.
 
 Acceptance: an unsafe PR receives a red check, a safe PR receives green, and
 rerunning the same SHA does not duplicate the DataHub record.

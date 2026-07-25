@@ -111,5 +111,30 @@ test("blocks a critical downstream change and passes a false-positive-free edit"
   });
   assert.equal(passed.conclusion, "success");
   assert.equal(passed.severity, "none");
+
+  const affectedButEquivalent = decideMerge({
+    consumers: [{ affected: true, type: "dashboard", tier: "tier_1" }],
+    comparison: { breached: [] },
+    executionStatus: "passed",
+  });
+  assert.equal(affectedButEquivalent.conclusion, "success");
+  assert.equal(affectedButEquivalent.severity, "none");
 });
 
+test("returns inconclusive instead of passing when required evidence is missing", () => {
+  const ambiguous = decideMerge({
+    evidenceStatus: "inconclusive",
+    inconclusiveReasons: ["Dataset identity is ambiguous"],
+    executionStatus: "not_run",
+  });
+  assert.equal(ambiguous.conclusion, "neutral");
+  assert.equal(ambiguous.mergeable, false);
+  assert.match(ambiguous.summary, /inconclusive/i);
+
+  const missingReplay = decideMerge({
+    consumers: [{ affected: true, type: "dataset" }],
+    executionStatus: "not_run",
+  });
+  assert.equal(missingReplay.conclusion, "neutral");
+  assert.ok(missingReplay.reasons.includes("Required counterfactual replay was not run"));
+});

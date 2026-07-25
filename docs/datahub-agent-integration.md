@@ -46,6 +46,17 @@ The browser UI still presents deterministic reference evidence so the hosted
 demo remains reliable. The DataHub API routes, GraphQL adapter, and MCP smoke
 path use live DataHub when configured.
 
+The local adapter was also verified against showcase `order_details`: canonical
+name parsing returned `order_details`, schema validation matched `order_id`,
+depth 1 returned one node/edge, and bounded depth 3 returned 25 nodes with 51
+real parent→child edges. Column context returned 25 column consumers and
+hydrated owner metadata for the affected subset.
+
+Evidence writeback uses the official MCP `save_document` contract. Its transport
+derives a deterministic Document URN from repository, PR, and full head SHA, so
+retries update one record. Mutation discovery was verified without writing;
+actual writeback remains approval-gated.
+
 ## Run locally
 
 Prerequisites:

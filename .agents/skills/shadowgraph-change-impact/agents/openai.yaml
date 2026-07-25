@@ -1,0 +1,4 @@
+interface:
+  display_name: "ShadowGraph Change Impact"
+  short_description: "Run an evidence-backed data change impact analysis"
+  default_prompt: "Use $shadowgraph-change-impact to analyze this pull request end to end."
