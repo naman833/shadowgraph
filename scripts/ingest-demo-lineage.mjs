@@ -327,6 +327,11 @@ function datasetPropertiesAspect(dataset) {
   };
 }
 
+/**
+ * `ownerTypes` is normally derived server-side by a mutation hook, but that
+ * derived map is dropped when the aspect is overwritten. Writing it explicitly
+ * keeps repeated runs byte-identical.
+ */
 function ownershipAspect(dataset) {
   return {
     value: {
@@ -337,6 +342,7 @@ function ownershipAspect(dataset) {
           typeUrn: TECHNICAL_OWNER_TYPE_URN,
         },
       ],
+      ownerTypes: { [TECHNICAL_OWNER_TYPE_URN]: [dataset.owner] },
       lastModified: AUDIT_STAMP,
     },
   };

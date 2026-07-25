@@ -353,7 +353,9 @@ export async function analyzePullRequestCommand(options, { log = () => {} } = {}
   const files = changedFiles(baseSha, headSha, options.cwd);
   const analyzable = files.filter((file) => ANALYZABLE.test(file.path));
   log(
-    `Comparing ${baseSha.slice(0, 12)}..${headSha.slice(0, 12)}: ${files.length} changed files, ${analyzable.length} analyzable.`,
+    `Comparing ${baseSha.slice(0, 12)}..${headSha.slice(0, 12)}: ${files.length} changed ${
+      files.length === 1 ? "file" : "files"
+    }, ${analyzable.length} analyzable.`,
   );
 
   const manifest = await loadDemoProject(options.projectDir, options.cwd);
