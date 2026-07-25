@@ -54,11 +54,12 @@ function normalizeSql(sql, label, limits) {
     throw new TypeError(`${label} contains a statement not allowed during replay`);
   }
 
-  const trimmed = sql.trim().replace(/;\s*$/, "");
-  if (trimmed.includes(";")) {
+  // Statement separators are counted on the stripped text so that a semicolon
+  // inside a comment or string literal is not mistaken for a second statement.
+  if (withoutCommentsAndStrings.replace(/;\s*$/, "").includes(";")) {
     throw new TypeError(`${label} must contain exactly one statement`);
   }
-  return trimmed;
+  return sql.trim().replace(/;\s*$/, "");
 }
 
 function positiveInteger(value, label) {
