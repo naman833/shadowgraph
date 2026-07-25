@@ -1,0 +1,38 @@
+{
+  "schema_version": "shadowgraph.check.v1",
+  "repository": "acme-data/analytics",
+  "pull_request": 185,
+  "commit_sha": "24be701",
+  "status": "passed",
+  "change": {
+    "file": "models/staging/stg_customers.sql",
+    "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,acme.analytics.stg_customers,PROD)",
+    "column": "customer_display_name",
+    "classification": "alias_change",
+    "before": "customer_name",
+    "after": "customer_display_name"
+  },
+  "analysis": {
+    "lineage_depth": 3,
+    "candidate_consumers": 3,
+    "true_consumers": 0,
+    "excluded_consumers": 3,
+    "rows_replayed": 12440,
+    "runtime_ms": 1210
+  },
+  "excluded_consumers": [
+    {
+      "asset": "customer_order_facts",
+      "reason": "changed alias is not referenced"
+    },
+    {
+      "asset": "repeat_purchase_rate",
+      "reason": "metric lineage uses customer_id only"
+    },
+    {
+      "asset": "Retention Overview",
+      "reason": "dashboard fields do not include the changed alias"
+    }
+  ],
+  "failed_checks": []
+}

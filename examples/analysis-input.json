@@ -1,0 +1,33 @@
+{
+  "change": {
+    "kind": "column_expression_changed",
+    "dataset": "analytics.orders",
+    "column": "discount_percentage"
+  },
+  "before": {
+    "schema": {
+      "order_id": "BIGINT",
+      "net_revenue": "DECIMAL"
+    },
+    "rowCount": 1000,
+    "nullRates": {
+      "net_revenue": 0.2
+    },
+    "metrics": {
+      "revenue": 100000
+    }
+  },
+  "after": {
+    "schema": {
+      "order_id": "BIGINT",
+      "net_revenue": "DECIMAL"
+    },
+    "rowCount": 1000,
+    "nullRates": {
+      "net_revenue": 0.2
+    },
+    "metrics": {
+      "revenue": 75250
+    }
+  }
+}

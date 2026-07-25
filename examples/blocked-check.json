@@ -1,0 +1,39 @@
+{
+  "schema_version": "shadowgraph.check.v1",
+  "repository": "acme-data/analytics",
+  "pull_request": 184,
+  "commit_sha": "7f39a41",
+  "status": "blocked",
+  "change": {
+    "file": "models/staging/stg_orders.sql",
+    "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,acme.analytics.stg_orders,PROD)",
+    "column": "discount_percentage",
+    "classification": "semantic_scale_change",
+    "before": "0-100",
+    "after": "0-1"
+  },
+  "analysis": {
+    "lineage_depth": 3,
+    "candidate_consumers": 5,
+    "true_consumers": 4,
+    "excluded_consumers": 1,
+    "rows_replayed": 12440,
+    "runtime_ms": 1840
+  },
+  "failed_checks": [
+    {
+      "asset": "fct_order_revenue",
+      "owner": "Data Platform",
+      "metric": "net_revenue",
+      "delta_percent": -24.75,
+      "threshold_percent": 1
+    },
+    {
+      "asset": "order_discount_ratio",
+      "owner": "Risk ML",
+      "metric": "distribution_drift",
+      "value": 0.31,
+      "threshold": 0.1
+    }
+  ]
+}
