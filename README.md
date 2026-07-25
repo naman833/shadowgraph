@@ -11,8 +11,10 @@ critical metrics, dashboards, or ML features.
 > **Project status:** this repository contains a working interactive product
 > vertical slice, a deterministic SQL/dbt change and impact-analysis engine,
 > and a typed DataHub GraphQL integration boundary with live health, entity,
-> and downstream-lineage API routes. GitHub Check publishing, executable
-> DuckDB replay, and DataHub evidence writeback remain in progress.
+> and downstream-lineage API routes. The official open-source DataHub MCP Server
+> and DataHub Skills are integrated and verified against local DataHub Core.
+> GitHub Check publishing, executable DuckDB replay, and DataHub evidence
+> writeback remain in progress.
 
 ## The problem
 
@@ -74,8 +76,9 @@ The current experience demonstrates:
 - Responsive, keyboard-accessible product UI
 - Example JSON and Markdown check outputs
 
-The current values are deterministic reference data, which keeps the hosted demo
-reliable while the live adapters are being implemented.
+The browser's current evidence values are deterministic reference data, which
+keeps the hosted demo reliable. The DataHub API routes and MCP verification path
+query live DataHub when it is configured.
 
 ## Validation
 
@@ -86,7 +89,13 @@ npm run lint
 
 `npm test` creates the Cloudflare-compatible production build and verifies the
 rendered product surface. See [docs/setup.md](docs/setup.md) for the DataHub
-Quickstart and planned integration environment.
+Quickstart and live integration environment.
+
+With local DataHub running, verify the official read-only MCP interface:
+
+```bash
+npm run verify:datahub-mcp
+```
 
 ## DataHub's role
 
@@ -135,6 +144,7 @@ tests/                Render and product-contract tests
 
 - [Architecture and trust boundaries](docs/architecture.md)
 - [Local and integration setup](docs/setup.md)
+- [Official DataHub MCP and Skills integration](docs/datahub-agent-integration.md)
 - [Golden-path demo scenario](docs/demo-scenario.md)
 - [Under-three-minute demo script](docs/demo-script.md)
 - [Hackathon judging alignment](docs/judging-alignment.md)
@@ -142,7 +152,7 @@ tests/                Render and product-contract tests
 
 ## Roadmap at a glance
 
-1. DataHub MCP/GraphQL context adapter
+1. DataHub MCP/Skills and GraphQL context adapter
 2. SQL and dbt diff classifier
 3. Column-level true-consumer resolver
 4. DuckDB before/after replay engine

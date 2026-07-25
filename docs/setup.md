@@ -1,7 +1,7 @@
 # Setup
 
-This guide separates what can be run today from the planned live-integration
-environment.
+This guide separates the deterministic browser demo from the live DataHub
+integration paths.
 
 ## 1. Run the application
 
@@ -28,8 +28,7 @@ npm run lint
 
 ## 2. Start DataHub locally
 
-The live adapter is in progress, but contributors can prepare the intended
-context environment with the DataHub CLI and Docker:
+Start the live context environment with the DataHub CLI and Docker:
 
 ```bash
 datahub docker quickstart
@@ -45,25 +44,51 @@ The showcase datapack provides a rich metadata graph. The planned executable
 replay uses a separately loaded static dataset, such as fiction-retail, because
 metadata alone does not contain warehouse rows.
 
-## 3. Planned integration configuration
+## 3. Live integration configuration
 
-When the live adapters land, the service will use server-side environment
-variables similar to:
+The application GraphQL adapter and official MCP server use server-side
+environment variables:
 
 ```env
 DATAHUB_GMS_URL=http://localhost:8080
 DATAHUB_FRONTEND_URL=http://localhost:9002
 DATAHUB_TOKEN=
+DATAHUB_GMS_TOKEN=
 GITHUB_APP_ID=
 GITHUB_PRIVATE_KEY=
 GITHUB_WEBHOOK_SECRET=
 ```
 
-Do not commit tokens, private keys, webhook secrets, or a populated `.env` file.
-The exact names may change with the adapter implementation; treat this block as
-the intended contract, not a claim that configuration is currently consumed.
+`DATAHUB_TOKEN` is consumed by ShadowGraph's GraphQL adapter.
+`DATAHUB_GMS_TOKEN` is the official MCP server's variable. They may contain the
+same local token, but both remain empty in committed examples.
 
-## 4. Production integration checklist
+Do not commit tokens, private keys, webhook secrets, or a populated `.env` file.
+
+## 4. Verify the official DataHub agent interface
+
+ShadowGraph vendors DataHub's official agent skills under `.agents/skills` and
+uses the official self-hosted MCP server. This is free and does not require an
+OpenAI or Codex API key.
+
+Install the free `uvx` runner on macOS:
+
+```bash
+brew install uv
+```
+
+After `datahub init` has created a private CLI profile, run:
+
+```bash
+npm run verify:datahub-mcp
+```
+
+The result should report `"ok": true`, `"readOnly": true`,
+`"searchReturnedUrn": true`, and `"lineageCallSucceeded": true`. See
+[datahub-agent-integration.md](datahub-agent-integration.md) for the security
+model and portable client configuration.
+
+## 5. Production integration checklist
 
 - Verify GitHub webhook signatures before processing payloads.
 - Resolve every result against the PR's immutable commit SHA.
@@ -91,6 +116,16 @@ open an asset's lineage tab.
 If the command completes, this is a compatibility warning. If Quickstart fails,
 install or isolate the CLI with a supported Python version and retry according
 to the DataHub documentation.
+
+### MCP verification says `uvx` was not found
+
+Install `uv` with `brew install uv`, then confirm `uvx --version` works.
+
+### MCP verification cannot find credentials
+
+Run `datahub init --username datahub --password datahub` for the local
+quickstart, or set `DATAHUB_GMS_URL` and `DATAHUB_GMS_TOKEN` in the shell.
+Never paste a token into a committed file.
 
 ### Docker Quickstart is slow
 

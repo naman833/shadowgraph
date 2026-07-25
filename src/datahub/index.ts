@@ -143,7 +143,7 @@ export function loadDataHubConfig(
     env.DATAHUB_GRAPHQL_URL ?? `${baseUrl}/api/graphql`,
     "DATAHUB_GRAPHQL_URL",
   );
-  const timeoutMs = Number(env.DATAHUB_TIMEOUT_MS ?? 5000);
+  const timeoutMs = Number(env.DATAHUB_TIMEOUT_MS ?? 30000);
 
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000) {
     throw new DataHubError(
@@ -157,7 +157,7 @@ export function loadDataHubConfig(
     graphqlUrl,
     token: env.DATAHUB_TOKEN || undefined,
     timeoutMs,
-    demoFallback: parseBoolean(env.DATAHUB_DEMO_FALLBACK, true),
+    demoFallback: parseBoolean(env.DATAHUB_DEMO_FALLBACK, false),
   };
 }
 
@@ -296,15 +296,18 @@ const SEARCH_ENTITY_QUERY = `
 `;
 
 const DOWNSTREAM_LINEAGE_QUERY = `
-  query ShadowGraphDownstreamLineage($input: ScrollAcrossLineageInput!) {
+  query ShadowGraphOneHopDownstreamLineage($input: ScrollAcrossLineageInput!) {
     scrollAcrossLineage(input: $input) {
       searchResults {
         degree
-        entity { ${ENTITY_FRAGMENT} }
+        entity { urn type }
       }
     }
   }
 `;
+
+const ONE_HOP_RESULT_LIMIT = 25;
+const LINEAGE_NODE_LIMIT = 100;
 
 interface RawOwner {
   urn?: string;
@@ -326,14 +329,36 @@ interface RawEntity {
   ownership?: { owners?: Array<{ owner?: RawOwner | null }> } | null;
 }
 
-function lastUrnSegment(urn: string): string {
-  const withoutSuffix = urn.replace(/[)]$/, "");
-  const part = withoutSuffix.split(/[,.]/).at(-1) ?? urn;
+function decodeUrnPart(part: string): string {
   try {
     return decodeURIComponent(part);
   } catch {
     return part;
   }
+}
+
+function datasetNameFromUrn(urn: string): string | undefined {
+  const prefix = "urn:li:dataset:(";
+  if (!urn.startsWith(prefix) || !urn.endsWith(")")) return undefined;
+
+  const tuple = urn.slice(prefix.length, -1);
+  const firstComma = tuple.indexOf(",");
+  const lastComma = tuple.lastIndexOf(",");
+  if (firstComma === -1 || lastComma === firstComma) return undefined;
+
+  const qualifiedName = decodeUrnPart(
+    tuple.slice(firstComma + 1, lastComma).trim(),
+  );
+  return qualifiedName.split(".").at(-1) || qualifiedName;
+}
+
+function lastUrnSegment(urn: string): string {
+  const datasetName = datasetNameFromUrn(urn);
+  if (datasetName) return datasetName;
+
+  const withoutSuffix = urn.replace(/[)]$/, "");
+  const part = withoutSuffix.split(/[,.]/).at(-1) ?? urn;
+  return decodeUrnPart(part);
 }
 
 function normalizeEntity(
@@ -562,66 +587,101 @@ export class DataHubClient {
     }
 
     try {
-      const data = await graphqlRequest<{
-        scrollAcrossLineage?: {
-          searchResults?: Array<{ degree?: number; entity?: RawEntity | null }>;
-        };
-      }>(
-        this.config,
-        DOWNSTREAM_LINEAGE_QUERY,
-        {
-          input: {
-            urn: rootUrn,
-            direction: "DOWNSTREAM",
-            query: "*",
-            count: 100,
-            orFilters: [
-              {
-                and: [
-                  {
-                    field: "degree",
-                    condition: "EQUAL",
-                    negated: false,
-                    values:
-                      depth === 1
-                        ? ["1"]
-                        : depth === 2
-                          ? ["1", "2"]
-                          : ["1", "2", "3+"],
-                  },
-                ],
-              },
-            ],
+      const queue: Array<{ urn: string; degree: number }> = [
+        { urn: rootUrn, degree: 0 },
+      ];
+      const visited = new Set([rootUrn]);
+      const nodes: DataHubLineageNode[] = [];
+      const edges: DataHubLineageEdge[] = [];
+      const edgeKeys = new Set<string>();
+      let nodeLimitReached = false;
+
+      for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const parent = queue[cursor];
+        if (parent.degree >= depth) continue;
+
+        const data = await graphqlRequest<{
+          scrollAcrossLineage?: {
+            searchResults?: Array<{
+              degree?: number;
+              entity?: RawEntity | null;
+            }>;
+          };
+        }>(
+          this.config,
+          DOWNSTREAM_LINEAGE_QUERY,
+          {
+            input: {
+              urn: parent.urn,
+              direction: "DOWNSTREAM",
+              query: "*",
+              count: ONE_HOP_RESULT_LIMIT,
+              orFilters: [
+                {
+                  and: [
+                    {
+                      field: "degree",
+                      condition: "EQUAL",
+                      negated: false,
+                      values: ["1"],
+                    },
+                  ],
+                },
+              ],
+            },
           },
-        },
-        this.fetchImpl,
-      );
-      const nodes =
-        data.scrollAcrossLineage?.searchResults
-          ?.filter(
+          this.fetchImpl,
+        );
+
+        const children =
+          data.scrollAcrossLineage?.searchResults?.filter(
             (
               result,
             ): result is { degree?: number; entity: RawEntity } =>
               Boolean(result.entity?.urn),
-          )
-          .map((result) => ({
-            ...normalizeEntity(result.entity),
-            degree: result.degree ?? 1,
-          })) ?? [];
+          ) ?? [];
 
-      // scrollAcrossLineage provides distance, not every pairwise edge. Expose
-      // root-to-result impact edges while retaining degree for UI grouping.
-      const edges = nodes.map((node) => ({
-        from: rootUrn,
-        to: node.urn,
-        degree: node.degree,
-      }));
+        for (const result of children) {
+          const childUrn = result.entity.urn as string;
+          if (childUrn === rootUrn) continue;
+
+          const childDegree = parent.degree + 1;
+          if (!visited.has(childUrn)) {
+            if (nodes.length >= LINEAGE_NODE_LIMIT) {
+              nodeLimitReached = true;
+              continue;
+            }
+            visited.add(childUrn);
+            nodes.push({
+              ...normalizeEntity(result.entity),
+              degree: childDegree,
+            });
+            if (childDegree < depth) {
+              queue.push({ urn: childUrn, degree: childDegree });
+            }
+          }
+
+          const edgeKey = `${parent.urn}\0${childUrn}`;
+          if (!edgeKeys.has(edgeKey)) {
+            edgeKeys.add(edgeKey);
+            edges.push({
+              from: parent.urn,
+              to: childUrn,
+              degree: childDegree,
+            });
+          }
+        }
+      }
+
       return {
         rootUrn,
         direction: "DOWNSTREAM",
         nodes,
         edges,
         source: "live",
+        warning: nodeLimitReached
+          ? `Lineage traversal stopped at the ${LINEAGE_NODE_LIMIT}-node safety limit.`
+          : undefined,
       };
     } catch (error) {
       if (!canFallback(this.config, error)) throw error;

@@ -17,12 +17,14 @@ Status: **implemented**
 
 ## Phase 1 — Live DataHub context
 
-Status: **next**
+Status: **in progress**
 
-- Resolve table and column hints to canonical DataHub URNs
-- Retrieve schema, ownership, and bounded downstream lineage
-- Persist raw adapter responses for reproducible fixtures
-- Return inconclusive when identity cannot be resolved
+- [x] Resolve dataset hints to canonical DataHub URNs
+- [x] Retrieve ownership and bounded downstream lineage
+- [x] Integrate and verify the official DataHub MCP Server and Skills
+- [ ] Resolve column hints and retrieve live schema fields
+- [ ] Persist raw adapter responses for reproducible fixtures
+- [ ] Return an explicit inconclusive decision when identity cannot be resolved
 
 Acceptance: one showcase-ecommerce asset can be resolved and its downstream
 lineage and owners appear in a structured ShadowGraph result.

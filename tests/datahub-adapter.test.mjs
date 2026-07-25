@@ -158,11 +158,83 @@ test("network-only demo fallback is deterministic and clearly labelled", async (
   assert.ok(lineage.nodes.every((node) => node.source === "demo"));
 });
 
-test("lineage query expresses depth using DataHub degree filters", async () => {
-  let requestBody;
+test("lineage traversal performs a cycle-safe one-hop BFS with real edges", async () => {
+  const requestBodies = [];
+  const root =
+    "urn:li:dataset:(urn:li:dataPlatform:snowflake,acme.orders,PROD)";
+  const finance =
+    "urn:li:dataset:(urn:li:dataPlatform:dbt,acme.analytics.order_finance,PROD)";
+  const customers =
+    "urn:li:dataset:(urn:li:dataPlatform:dbt,acme.analytics.customers,PROD)";
+  const dashboard = "urn:li:dashboard:(looker,revenue_overview)";
+  const adjacency = new Map([
+    [
+      root,
+      [
+        { urn: finance, type: "DATASET" },
+        { urn: customers, type: "DATASET" },
+      ],
+    ],
+    [finance, [{ urn: dashboard, type: "DASHBOARD" }]],
+    [
+      customers,
+      [
+        { urn: dashboard, type: "DASHBOARD" },
+        { urn: root, type: "DATASET" },
+      ],
+    ],
+  ]);
+
   const fetchImpl = async (_url, init) => {
-    requestBody = JSON.parse(init.body);
+    const requestBody = JSON.parse(init.body);
+    requestBodies.push(requestBody);
+    const entities = adjacency.get(requestBody.variables.input.urn) ?? [];
     return new Response(
+      JSON.stringify({
+        data: {
+          scrollAcrossLineage: {
+            searchResults: entities.map((entity) => ({ degree: 1, entity })),
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  };
+  const client = new adapter.DataHubClient(config(), fetchImpl);
+  const lineage = await client.downstreamLineage(root, 2);
+
+  assert.deepEqual(
+    requestBodies.map((body) => body.variables.input.urn),
+    [root, finance, customers],
+  );
+  assert.ok(
+    requestBodies.every(
+      (body) =>
+        body.variables.input.count === 25 &&
+        body.variables.input.orFilters[0].and[0].values.length === 1 &&
+        body.variables.input.orFilters[0].and[0].values[0] === "1",
+    ),
+  );
+  assert.equal(lineage.source, "live");
+  assert.deepEqual(
+    lineage.nodes.map(({ urn, name, degree }) => ({ urn, name, degree })),
+    [
+      { urn: finance, name: "order_finance", degree: 1 },
+      { urn: customers, name: "customers", degree: 1 },
+      { urn: dashboard, name: "revenue_overview", degree: 2 },
+    ],
+  );
+  assert.deepEqual(lineage.edges, [
+    { from: root, to: finance, degree: 1 },
+    { from: root, to: customers, degree: 1 },
+    { from: finance, to: dashboard, degree: 2 },
+    { from: customers, to: dashboard, degree: 2 },
+  ]);
+});
+
+test("dataset names are parsed from the URN dataset field, not the environment", async () => {
+  const fetchImpl = async () =>
+    new Response(
       JSON.stringify({
         data: {
           scrollAcrossLineage: {
@@ -170,9 +242,8 @@ test("lineage query expresses depth using DataHub degree filters", async () => {
               {
                 degree: 1,
                 entity: {
-                  urn: "urn:li:dataset:(urn:li:dataPlatform:dbt,acme.order_finance,PROD)",
+                  urn: "urn:li:dataset:(urn:li:dataPlatform:snowflake,warehouse.analytics.daily%20orders,PROD)",
                   type: "DATASET",
-                  name: "order_finance",
                 },
               },
             ],
@@ -181,23 +252,42 @@ test("lineage query expresses depth using DataHub degree filters", async () => {
       }),
       { status: 200 },
     );
-  };
   const client = new adapter.DataHubClient(config(), fetchImpl);
-  const root =
-    "urn:li:dataset:(urn:li:dataPlatform:snowflake,acme.orders,PROD)";
-  const lineage = await client.downstreamLineage(root, 2);
-
-  assert.deepEqual(
-    requestBody.variables.input.orFilters[0].and[0].values,
-    ["1", "2"],
+  const lineage = await client.downstreamLineage(
+    "urn:li:dataset:(urn:li:dataPlatform:snowflake,warehouse.raw.orders,PROD)",
+    1,
   );
-  assert.equal(lineage.source, "live");
-  assert.equal(lineage.nodes[0].degree, 1);
-  assert.deepEqual(lineage.edges[0], {
-    from: root,
-    to: lineage.nodes[0].urn,
-    degree: 1,
-  });
+
+  assert.equal(lineage.nodes[0].name, "daily orders");
+});
+
+test("lineage traversal enforces a hard node bound", async () => {
+  const fetchImpl = async () =>
+    new Response(
+      JSON.stringify({
+        data: {
+          scrollAcrossLineage: {
+            searchResults: Array.from({ length: 150 }, (_, index) => ({
+              degree: 1,
+              entity: {
+                urn: `urn:li:dataset:(urn:li:dataPlatform:test,table_${index},PROD)`,
+                type: "DATASET",
+              },
+            })),
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  const client = new adapter.DataHubClient(config(), fetchImpl);
+  const lineage = await client.downstreamLineage(
+    "urn:li:dataset:(urn:li:dataPlatform:test,root,PROD)",
+    1,
+  );
+
+  assert.equal(lineage.nodes.length, 100);
+  assert.equal(lineage.edges.length, 100);
+  assert.match(lineage.warning, /100-node safety limit/);
 });
 
 test("demo fallback does not hide HTTP or GraphQL integration failures", async () => {
