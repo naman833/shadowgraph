@@ -46,3 +46,9 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# self-hosted runner state (see docs/self-hosted-runner.md); never commit these
+/actions-runner/
+/_work/
+.credentials*
+.runner

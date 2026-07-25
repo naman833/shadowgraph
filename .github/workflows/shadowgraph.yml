@@ -1,28 +1,47 @@
 name: ShadowGraph
 
+# ShadowGraph queries a DataHub instance that is reachable only from the
+# machine hosting it, so this workflow runs on a self-hosted runner. See
+# docs/self-hosted-runner.md for registration; no runner files, tokens, or
+# configuration belong in this repository.
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# Least privilege: read the code, write the Check, nothing else.
 permissions:
   contents: read
+  checks: write
+
+concurrency:
+  group: shadowgraph-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: [self-hosted, shadowgraph, datahub]
+    timeout-minutes: 20
 
     steps:
-      - name: Check out the pull request
+      # The pull-request merge ref moves. Checking out the immutable head SHA
+      # keeps the analysis, the evidence, and the Check bound to one commit.
+      - name: Check out the pull-request head commit
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      - name: Report the commits under analysis
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "base $BASE_SHA"
+          echo "head $HEAD_SHA"
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
 
       - name: Install dependencies
         run: npm ci
@@ -30,24 +49,79 @@ jobs:
       - name: Verify project
         run: npm test
 
-      - name: Analyze immutable pull-request snapshots
+      - name: Confirm DataHub is reachable
         env:
+          DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL || 'http://localhost:8080' }}
+        run: |
+          if curl --fail --silent --show-error --max-time 10 "$DATAHUB_GMS_URL/health"; then
+            echo "DataHub GMS is reachable."
+          else
+            # ShadowGraph fails closed on missing context: the analysis still
+            # runs and reports neutral rather than an unsafe pass.
+            echo "::warning::DataHub GMS is unreachable; expect a neutral result."
+          fi
+
+      # Exit codes: 0 safe, 1 blocked, 2 inconclusive, 3 command failure.
+      # `continue-on-error` lets the evidence upload run before the job result
+      # is decided in the gate step below.
+      - name: Run ShadowGraph analysis
+        id: analyze
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPOSITORY: ${{ github.repository }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL || 'http://localhost:8080' }}
         run: >-
-          node scripts/analyze-pr-diff.mjs
-          --base "$BASE_SHA"
-          --head "$HEAD_SHA"
+          node scripts/analyze-pr.mjs
           --repository "$REPOSITORY"
           --pull-request "$PULL_REQUEST"
-          --output outputs/pull-request-analysis.json
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --lineage-depth 3
+          --details-url "$RUN_URL"
+          --publish-check
+          --output outputs/shadowgraph-evidence.json
 
       - name: Upload ShadowGraph evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shadowgraph-pr-${{ github.event.pull_request.number }}
-          path: outputs/pull-request-analysis.json
-          if-no-files-found: error
+          name: shadowgraph-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: outputs/shadowgraph-evidence.json
+          if-no-files-found: warn
           retention-days: 14
+
+      # A neutral result is surfaced as its own outcome so it is never silently
+      # read as a pass. Both neutral and blocked stop the merge.
+      - name: Gate the merge on the ShadowGraph decision
+        env:
+          OUTCOME: ${{ steps.analyze.outcome }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then
+            echo "ShadowGraph: safe to merge."
+            exit 0
+          fi
+          echo "Reading the recorded decision from the evidence artifact."
+          decision=$(node -e '
+            const fs = require("node:fs");
+            const path = "outputs/shadowgraph-evidence.json";
+            if (!fs.existsSync(path)) { console.log("error"); process.exit(0); }
+            const { decision } = JSON.parse(fs.readFileSync(path, "utf8"));
+            console.log(decision?.conclusion ?? "error");
+          ')
+          case "$decision" in
+            failure)
+              echo "::error::ShadowGraph blocked this change: a behavioural regression was measured."
+              ;;
+            neutral)
+              echo "::error::ShadowGraph could not clear this change: required evidence is missing. This is not a pass."
+              ;;
+            *)
+              echo "::error::ShadowGraph did not complete. Review the step log above."
+              ;;
+          esac
+          exit 1
