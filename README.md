@@ -19,6 +19,10 @@
   <a href="https://github.com/naman833/shadowgraph/pull/2">Safe PR (passed)</a>
 </p>
 
+<p align="center">
+  <img src="public/media/shadowgraph-hero.png" alt="ShadowGraph — Block bad data before merge" width="960">
+</p>
+
 ---
 
 ## What is ShadowGraph?
@@ -175,6 +179,22 @@ order_discount_features: metric/high_discount_orders    6 → 17
 order_discount_features: distribution/max_discount_ratio 0.35 → 35
 stg_orders:              distribution/median_net_revenue 492.78 → -6182.5
 ```
+
+---
+
+## Blocks the break. Passes the refactor.
+
+<p align="center">
+  <img src="public/media/dangerous-vs-safe.png" alt="PR #1 blocked vs PR #2 passed — same file, same schema, different behavior" width="960">
+</p>
+
+---
+
+## Measured counterfactual evidence
+
+<p align="center">
+  <img src="public/media/counterfactual-evidence.png" alt="Real replay measurements: revenue 17k to -445k, discount rate 0.149 to 14.9" width="960">
+</p>
 
 ---
 
