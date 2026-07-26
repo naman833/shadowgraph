@@ -18,7 +18,7 @@ export interface DataHubConfig {
   timeoutMs: number;
   /**
    * Allow a deterministic, explicitly-labelled graph when DataHub is
-   * unavailable. Intended for previews and the hosted hackathon demo.
+   * unavailable. Intended for previews and local development.
    */
   demoFallback: boolean;
 }

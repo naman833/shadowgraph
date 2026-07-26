@@ -80,7 +80,7 @@ creating a second one, leaving exactly one record per pull request.
 Acceptance: the reference repair restores expected metrics and passes the
 original failed policies.
 
-## Explicit hackathon non-goals
+## Explicit non-goals
 
 - Every SQL dialect
 - Arbitrary production warehouse execution
