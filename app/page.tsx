@@ -6,6 +6,38 @@ import { useEffect, useState } from "react";
 
 type RunState = "ready" | "loading" | "loaded" | "error";
 type Mode = "selector" | "live" | "demo";
+type LiveTab = "check" | "evidence";
+
+interface ReplayEntry {
+  model: string;
+  metric: string;
+  category: string;
+  before: string | number;
+  after: string | number;
+  breached: boolean;
+}
+
+interface ConsumerEntry {
+  urn: string;
+  name: string;
+  type: string;
+  affected: boolean;
+  owners: Array<{ name: string }>;
+  classification: string;
+}
+
+interface LineageNodeEntry {
+  urn: string;
+  name: string;
+  type: string;
+  platform?: string;
+  degree: number;
+}
+
+interface LineageEdgeEntry {
+  from: string;
+  to: string;
+}
 
 interface PrData {
   owner: string;
@@ -29,6 +61,14 @@ interface PrData {
   ownerRouting: string;
   workflowRunUrl: string;
   sources: { github: string; datahub: string; evidence: string };
+  // Rich evidence from artifact
+  consumers: ConsumerEntry[];
+  replayMeasurements: ReplayEntry[];
+  resolvedUrns: string[];
+  lineageNodes: LineageNodeEntry[];
+  lineageEdges: LineageEdgeEntry[];
+  evidenceNote: string;
+  analysisTimestamp: string;
 }
 
 // --- Demo data (PR #184, explicitly labelled) ---
@@ -55,6 +95,13 @@ const DEMO_DATA: PrData = {
   ownerRouting: "Data Platform, Finance Analytics, Ecommerce Ops, Risk ML",
   workflowRunUrl: "#demo",
   sources: { github: "demo", datahub: "demo", evidence: "demo" },
+  consumers: [],
+  replayMeasurements: [],
+  resolvedUrns: [],
+  lineageNodes: [],
+  lineageEdges: [],
+  evidenceNote: "",
+  analysisTimestamp: "",
 };
 
 const demoPhases = [
@@ -115,6 +162,7 @@ export default function Home() {
   const [prData, setPrData] = useState<PrData | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [datahubStatus, setDatahubStatus] = useState<"checking" | "live" | "unavailable" | "not_configured">("checking");
+  const [liveTab, setLiveTab] = useState<LiveTab>("check");
 
   // Demo animation state
   const [demoRunning, setDemoRunning] = useState(false);
@@ -136,6 +184,7 @@ export default function Home() {
     setRunState("loading");
     setErrorMsg("");
     setPrData(null);
+    setLiveTab("check");
     try {
       const response = await fetch(
         `/api/shadowgraph/evidence?owner=${encodeURIComponent(ownerInput)}&repo=${encodeURIComponent(repoInput)}&pull=${encodeURIComponent(pullInput)}`,
@@ -169,6 +218,13 @@ export default function Home() {
         ownerRouting: d.assetOwners?.map((o: { name: string }) => o.name).join(", ") ?? "",
         workflowRunUrl: d.workflowLinks?.runUrl ?? "",
         sources: d.sources ?? { github: "live_github", datahub: "unavailable", evidence: "missing" },
+        consumers: d.trueConsumers ?? [],
+        replayMeasurements: d.breachedChecks ?? [],
+        resolvedUrns: d.resolvedUrns ?? [],
+        lineageNodes: d.lineageNodes ?? [],
+        lineageEdges: d.lineageEdges ?? [],
+        evidenceNote: json.evidenceNote ?? "",
+        analysisTimestamp: d.analysisTimestamp ?? "",
       });
       setRunState("loaded");
       setMode("live");
@@ -494,9 +550,9 @@ export default function Home() {
           <span className={`source-badge ${sourceColor(data.sources.github)}-badge`}>
             {sourceLabel(data.sources.github)}
           </span>
-          <span className={`connection ${datahubStatus === "live" ? "live" : "demo"}`}>
+          <span className={`connection ${data.sources.datahub === "live" ? "live" : "demo"}`}>
             <span className="connection-dot" aria-hidden="true" />
-            {datahubStatus === "live" ? "DataHub connected" : "DataHub unavailable"}
+            {data.sources.datahub === "live" ? "DataHub connected" : data.sources.datahub === "not_configured" ? "DataHub not configured" : "DataHub unavailable"}
           </span>
           <button className="demo-button" onClick={backToSelector}>← Back</button>
         </div>
@@ -584,40 +640,177 @@ export default function Home() {
         <section className="analysis-panel">
           <div className="analysis-header">
             <div className="segmented" role="tablist" aria-label="Analysis view">
-              <button role="tab" aria-selected={true} className="active">Check result</button>
-              <button role="tab" aria-selected={false}>Evidence details</button>
+              <button
+                role="tab"
+                aria-selected={liveTab === "check"}
+                className={liveTab === "check" ? "active" : ""}
+                onClick={() => setLiveTab("check")}
+                onKeyDown={(e) => { if (e.key === "ArrowRight") setLiveTab("evidence"); }}
+              >
+                Check result
+              </button>
+              <button
+                role="tab"
+                aria-selected={liveTab === "evidence"}
+                className={liveTab === "evidence" ? "active" : ""}
+                onClick={() => setLiveTab("evidence")}
+                onKeyDown={(e) => { if (e.key === "ArrowLeft") setLiveTab("check"); }}
+              >
+                Evidence details
+                {data.breachedChecks > 0 && <span className="tab-alert">{data.breachedChecks}</span>}
+              </button>
             </div>
-            <span className="scope-note">Commit-scoped analysis</span>
+            <span className="scope-note">
+              {data.sources.evidence === "commit_scoped_evidence" ? "Workflow artifact" : "GitHub Check"}
+            </span>
           </div>
 
-          <div className="evidence-view">
-            <div className="evidence-summary">
-              <div>
-                <span className="kicker">GITHUB CHECK</span>
-                <h3>{data.checkTitle || "No ShadowGraph check found"}</h3>
-                <p>{data.checkSummary}</p>
+          {liveTab === "check" ? (
+            <div className="evidence-view" role="tabpanel" aria-label="Check result">
+              <div className="evidence-summary">
+                <div>
+                  <span className="kicker">GITHUB CHECK</span>
+                  <h3>{data.checkTitle || "No ShadowGraph check found"}</h3>
+                  <p>{data.checkSummary}</p>
+                </div>
+                <span className={`decision-pill ${isBlocked ? "failed" : data.checkConclusion === "success" ? "passed" : ""}`}>
+                  {data.checkConclusion.toUpperCase()}
+                </span>
               </div>
-              <span className={`decision-pill ${isBlocked ? "failed" : data.checkConclusion === "success" ? "passed" : ""}`}>
-                {data.checkConclusion.toUpperCase()}
-              </span>
-            </div>
 
-            <div className="metric-grid">
-              <MetricCard label="Risk level" value={data.riskLevel} failed={data.riskLevel === "critical" || data.riskLevel === "high"} />
-              <MetricCard label="Affected assets" value={String(data.affectedAssets)} failed={data.affectedAssets > 0 && isBlocked} />
-              <MetricCard label="Breached checks" value={String(data.breachedChecks)} failed={data.breachedChecks > 0} />
-              <MetricCard label="Owner routing" value={data.ownerRouting || "None"} />
-            </div>
-
-            {data.checkText && (
-              <div className="proof" style={{ flexDirection: "column", alignItems: "stretch" }}>
-                <span className="kicker">EVIDENCE TEXT</span>
-                <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap", color: "var(--ink)" }}>
-                  {data.checkText}
-                </pre>
+              <div className="metric-grid">
+                <MetricCard label="Risk level" value={data.riskLevel} failed={data.riskLevel === "critical" || data.riskLevel === "high"} />
+                <MetricCard label="Affected assets" value={String(data.affectedAssets)} failed={data.affectedAssets > 0 && isBlocked} />
+                <MetricCard label="Breached checks" value={String(data.breachedChecks)} failed={data.breachedChecks > 0} />
+                <MetricCard label="Owner routing" value={data.ownerRouting || "None"} />
               </div>
-            )}
-          </div>
+
+              {data.checkText && (
+                <div className="proof" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                  <span className="kicker">EVIDENCE TEXT</span>
+                  <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap", color: "var(--ink)" }}>
+                    {data.checkText}
+                  </pre>
+                </div>
+              )}
+
+              <div className="evidence-links">
+                {data.prUrl && data.prUrl !== "#demo" && (
+                  <a href={data.prUrl} target="_blank" rel="noopener noreferrer">View PR ↗</a>
+                )}
+                {data.workflowRunUrl && data.workflowRunUrl !== "#demo" && (
+                  <a href={data.workflowRunUrl} target="_blank" rel="noopener noreferrer">Workflow run ↗</a>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="evidence-view" role="tabpanel" aria-label="Evidence details">
+              <div className="evidence-summary">
+                <div>
+                  <span className="kicker">STRUCTURED EVIDENCE</span>
+                  <h3>
+                    {data.sources.evidence === "commit_scoped_evidence"
+                      ? "Workflow artifact evidence"
+                      : "Evidence unavailable"}
+                  </h3>
+                  {data.evidenceNote && (
+                    <p className="evidence-note">{data.evidenceNote}</p>
+                  )}
+                </div>
+                <span className={`source-badge ${sourceColor(data.sources.evidence)}-badge`}>
+                  {sourceLabel(data.sources.evidence)}
+                </span>
+              </div>
+
+              {data.sources.evidence === "commit_scoped_evidence" ? (
+                <>
+                  {/* Immutable identities */}
+                  <div className="evidence-section">
+                    <span className="kicker">COMMIT IDENTITY</span>
+                    <dl className="evidence-dl">
+                      <div><dt>Base SHA</dt><dd><code>{data.baseSha}</code></dd></div>
+                      <div><dt>Head SHA</dt><dd><code>{data.headSha}</code></dd></div>
+                      <div><dt>Timestamp</dt><dd>{data.analysisTimestamp || "—"}</dd></div>
+                    </dl>
+                  </div>
+
+                  {/* Resolved URNs */}
+                  {data.resolvedUrns.length > 0 && (
+                    <div className="evidence-section">
+                      <span className="kicker">RESOLVED DATAHUB URNS</span>
+                      <ul className="evidence-list">
+                        {data.resolvedUrns.map((urn) => (
+                          <li key={urn}><code>{urn}</code></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Lineage */}
+                  {data.lineageNodes.length > 0 && (
+                    <div className="evidence-section">
+                      <span className="kicker">LINEAGE ({data.lineageNodes.length} nodes, {data.lineageEdges.length} edges)</span>
+                      <ul className="evidence-list">
+                        {data.lineageEdges.map((edge, i) => {
+                          const fromNode = data.lineageNodes.find((n) => n.urn === edge.from);
+                          const toNode = data.lineageNodes.find((n) => n.urn === edge.to);
+                          return (
+                            <li key={i}>
+                              <strong>{fromNode?.name ?? "?"}</strong> → <strong>{toNode?.name ?? "?"}</strong>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* True consumers */}
+                  {data.consumers.length > 0 && (
+                    <div className="evidence-section">
+                      <span className="kicker">TRUE CONSUMERS ({data.consumers.filter((c) => c.affected).length})</span>
+                      <div className="evidence-consumers">
+                        {data.consumers.filter((c) => c.affected).map((c) => (
+                          <div key={c.urn} className="evidence-consumer-row">
+                            <strong>{c.name}</strong>
+                            <span className="evidence-meta">{c.type}</span>
+                            {c.owners.length > 0 && (
+                              <span className="evidence-meta">Owner: {c.owners.map((o) => o.name).join(", ")}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Replay measurements */}
+                  {data.replayMeasurements.length > 0 && (
+                    <div className="evidence-section">
+                      <span className="kicker">BREACHED CHECKS ({data.replayMeasurements.length})</span>
+                      <div className="replay-table">
+                        <div className="replay-row replay-header">
+                          <span>Model</span><span>Metric</span><span>Before</span><span>After</span>
+                        </div>
+                        {data.replayMeasurements.map((m, i) => (
+                          <div key={i} className="replay-row breached">
+                            <span>{m.model}</span>
+                            <span>{m.category}/{m.metric}</span>
+                            <span>{String(m.before)}</span>
+                            <span className="bad-value">{String(m.after)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="evidence-section">
+                  <p style={{ color: "var(--muted)", fontSize: 13 }}>
+                    {data.evidenceNote || "Configure GITHUB_TOKEN to enable artifact download for structured evidence."}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         <aside className="timeline-panel">

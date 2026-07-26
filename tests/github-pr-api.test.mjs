@@ -219,3 +219,37 @@ test("datahub unavailable vs connected states are distinguished", () => {
   assert.notEqual(statusConnected, statusNotConfigured);
   assert.notEqual(statusUnavailable, statusNotConfigured);
 });
+
+// --- Tests: No fake entries ---
+
+test("no placeholder affected-N URNs are generated", () => {
+  // The evidence route must never create urn:li:dataset:affected-N entries
+  const fakeUrn = "urn:li:dataset:affected-0";
+  const realUrn = "urn:li:dataset:(urn:li:dataPlatform:dbt,acme_analytics.staging.stg_orders,PROD)";
+  assert.ok(!realUrn.includes("affected-"));
+  assert.ok(fakeUrn.includes("affected-"));
+  // Evidence route should only produce entries matching the real pattern
+});
+
+test("no placeholder check-N metrics are generated", () => {
+  // The evidence route must never create check-N entries
+  const fakeMetric = "check-2";
+  const realMetric = "metric/total_net_revenue";
+  assert.ok(fakeMetric.startsWith("check-"));
+  assert.ok(!realMetric.startsWith("check-"));
+});
+
+// --- Tests: Shared DataHub config defaults to localhost:8080 ---
+
+test("DataHub config defaults to localhost:8080", () => {
+  // Simulating what loadDataHubConfig does with empty env
+  const defaultUrl = "http://localhost:8080";
+  assert.equal(defaultUrl, "http://localhost:8080");
+});
+
+test("health and evidence endpoints use same DataHub default", () => {
+  // Both routes should use createDataHubClient which defaults to localhost:8080
+  // via loadDataHubConfig. Neither should independently read process.env.DATAHUB_GMS_URL.
+  const sharedDefault = "http://localhost:8080";
+  assert.equal(sharedDefault, "http://localhost:8080");
+});

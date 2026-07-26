@@ -1610,3 +1610,146 @@ footer {
   color: var(--green-dark);
   border-color: #b4dfc9;
 }
+
+/* --- Evidence details panel --- */
+
+.evidence-section {
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.evidence-section .kicker {
+  margin-bottom: 8px;
+}
+
+.evidence-dl {
+  margin: 0;
+}
+
+.evidence-dl div {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 11px;
+}
+
+.evidence-dl dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.evidence-dl dd {
+  margin: 0;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.evidence-list {
+  margin: 4px 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 11px;
+}
+
+.evidence-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.evidence-list code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  background: #f1f4f0;
+  padding: 2px 5px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+.evidence-consumers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.evidence-consumer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.evidence-consumer-row strong {
+  font-size: 12px;
+}
+
+.evidence-meta {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.evidence-note {
+  font-size: 11px;
+  color: var(--amber);
+  margin-top: 4px;
+}
+
+/* --- Replay measurements table --- */
+
+.replay-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 11px;
+}
+
+.replay-row {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr 1fr;
+  gap: 4px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.replay-row:last-child {
+  border-bottom: none;
+}
+
+.replay-header {
+  background: #f5f7f4;
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.replay-row.breached {
+  background: var(--red-soft);
+}
+
+.replay-row .bad-value {
+  color: var(--red);
+  font-weight: 700;
+}
+
+/* --- Evidence links --- */
+
+.evidence-links {
+  display: flex;
+  gap: 16px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.evidence-links a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.evidence-links a:hover {
+  text-decoration: underline;
+}
