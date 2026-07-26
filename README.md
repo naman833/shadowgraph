@@ -379,8 +379,6 @@ npm run verify:datahub-mcp  # DataHub MCP server smoke test (requires DataHub)
 - [DataHub MCP and Skills integration](docs/datahub-agent-integration.md)
 - [GitHub Actions workflow](docs/github-action.md)
 - [Golden-path demo scenario](docs/demo-scenario.md)
-- [Under-three-minute demo script](docs/demo-script.md)
-- [Hackathon judging alignment](docs/judging-alignment.md)
 - [Roadmap](docs/roadmap.md)
 
 ---
