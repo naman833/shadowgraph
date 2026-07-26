@@ -7,9 +7,16 @@
 <p align="center"><strong>Pre-merge safety for data changes — powered by DataHub.</strong></p>
 
 <p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="Apache 2.0 License"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D22.13-green.svg" alt="Node.js ≥22.13"></a>
+  <a href="https://github.com/naman833/shadowgraph/actions"><img src="https://img.shields.io/github/actions/workflow/status/naman833/shadowgraph/shadowgraph.yml?label=CI" alt="CI Status"></a>
+  <a href="https://github.com/naman833/shadowgraph/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
+  <a href="https://datahubproject.io"><img src="https://img.shields.io/badge/DataHub-powered-blueviolet.svg" alt="DataHub Powered"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/naman833/shadowgraph/pull/1">Dangerous PR (blocked)</a> ·
-  <a href="https://github.com/naman833/shadowgraph/pull/2">Safe PR (passed)</a> ·
-  <a href="docs/demo-script.md">3-minute demo script</a>
+  <a href="https://github.com/naman833/shadowgraph/pull/2">Safe PR (passed)</a>
 </p>
 
 ---
