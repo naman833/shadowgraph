@@ -74,6 +74,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/job/${{ github.job }}
           DATAHUB_GMS_URL: ${{ vars.DATAHUB_GMS_URL || 'http://localhost:8080' }}
         run: >-
           node scripts/analyze-pr.mjs

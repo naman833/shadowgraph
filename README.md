@@ -157,27 +157,91 @@ unavailable the run proceeds unchanged.
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), select **Run Shadow
-Analysis**, watch the five analysis stages complete, then switch between
-**Impact graph** and **Execution evidence**.
+Open [http://localhost:3000](http://localhost:3000). The application starts in
+**PR selector mode**:
 
-The page walks through the same scenario visually: the changed SQL, the impacted
-lineage graph, owners, before/after evidence, and the merge decision.
+1. Enter a repository owner and name (defaults to `naman833/shadowgraph`).
+2. Enter a pull request number (defaults to `1`).
+3. Click **Load PR** to fetch real evidence from GitHub.
+4. The UI displays the actual PR title, branch, head SHA, diff, Check result,
+   risk level, affected assets, breached checks, and owner routing — all fetched
+   live from GitHub.
+5. Click **Use demo scenario** at any time for the deterministic PR #184 demo.
 
-Its displayed evidence values are deterministic reference data, so the page loads
-whether or not DataHub is running. The application's DataHub routes do query the
-live instance when it is configured:
+### Live PR mode (real GitHub evidence)
+
+For `naman833/shadowgraph` PR #1, the UI shows:
+
+- Repository: `naman833 / shadowgraph`
+- PR title from GitHub
+- Branch: `main` ← `demo/dangerous-discount-scale`
+- Head SHA: `7d91d18…`
+- GitHub Check: **failure** — "Unsafe data change blocked"
+- Risk: **critical**
+- Affected assets: **2**
+- Breached checks: **8**
+- Owner routing: **Analytics Engineering**
+- Links to the real PR, workflow run, and job
+
+### Data source indicators
+
+The UI shows explicit source badges:
+
+| Badge | Meaning |
+| --- | --- |
+| `LIVE GITHUB` | Data fetched from GitHub API |
+| `LIVE DATAHUB` | DataHub instance is reachable |
+| `COMMIT-SCOPED EVIDENCE` | Evidence matches the PR head SHA |
+| `DEMO DATA` | Deterministic demo selected by user |
+| `UNAVAILABLE` | Service is unreachable |
+
+DataHub is **never** reported as connected merely because demo data contains
+DataHub-shaped fields. The `/api/datahub/health` endpoint verifies the real
+instance.
+
+### Demo mode
+
+The deterministic PR #184 scenario (acme-data/analytics) appears **only** when
+the user explicitly clicks "Use demo scenario". It is clearly labelled with a
+`DEMO DATA` badge and never silently replaces a failed live request.
+
+### API routes
 
 ```bash
+# Load real PR metadata and ShadowGraph Check result
+curl 'http://localhost:3000/api/github/pr?owner=naman833&repo=shadowgraph&pull=1'
+
+# Load combined evidence view model
+curl 'http://localhost:3000/api/shadowgraph/evidence?owner=naman833&repo=shadowgraph&pull=1'
+
+# DataHub health check
 curl 'http://localhost:3000/api/datahub/health'
-curl 'http://localhost:3000/api/datahub/entity?q=stg_orders'
-curl -X POST 'http://localhost:3000/api/datahub/lineage' \
-  -H 'content-type: application/json' \
-  -d '{"urn":"urn:li:dataset:(urn:li:dataPlatform:dbt,acme_analytics.staging.stg_orders,PROD)","depth":3}'
 ```
 
-Each response carries a `source` field of `live` or `demo`, so it is always clear
-which one produced the answer.
+### Environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `GITHUB_TOKEN` | Optional | Server-side only. Increases GitHub API rate limits from 60 to 5000 req/hr. Never sent to the browser. |
+| `DATAHUB_GMS_URL` | Optional | DataHub GMS URL (default: `http://localhost:8080`) |
+| `DATAHUB_GMS_TOKEN` | Optional | DataHub personal access token |
+
+### Troubleshooting GitHub rate limits
+
+Without `GITHUB_TOKEN`, the GitHub API allows 60 requests per hour. If you see
+"Rate limited" errors, set the token in your `.env` file:
+
+```bash
+GITHUB_TOKEN=ghp_your_token_here
+```
+
+The token is only used server-side and is never exposed in API responses.
+
+### Commit identity prevents stale evidence
+
+The ShadowGraph Check output includes `Commit: \`<sha>\``. The evidence API
+verifies this matches the PR's current head SHA. If the PR is updated with new
+commits, evidence from the old commit is marked as `stale` in the UI.
 
 Run the executable dangerous and safe golden paths:
 

@@ -32,9 +32,9 @@ test("server-renders the ShadowGraph product surface", async () => {
     html,
     /<title>ShadowGraph — Pre-merge safety for data changes<\/title>/i,
   );
-  assert.match(html, /Run Shadow Analysis/);
-  assert.match(html, /Checking DataHub/);
-  assert.match(html, /Change discount values to decimal scale/);
-  assert.match(html, /Downstream assets requiring review/);
+  assert.match(html, /ShadowGraph Evidence Viewer/);
+  assert.match(html, /Load PR/);
+  assert.match(html, /Use demo scenario/);
+  assert.match(html, /naman833/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
 });
