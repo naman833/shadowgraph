@@ -15,9 +15,23 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The application uses
-deterministic reference data; a DataHub instance is not required to explore the
-current vertical slice.
+Open [http://localhost:3000](http://localhost:3000). The application opens in PR
+selector mode and fetches real pull-request evidence from GitHub. Public
+repositories work unauthenticated at 60 requests per hour, but downloading the
+evidence artifact that carries the replay measurements requires a token.
+
+The routes run inside the Cloudflare Workers runtime, which does not inherit the
+shell environment, so `process.env` in a route comes from `.dev.vars` rather than
+from an exported variable:
+
+```bash
+printf 'GITHUB_TOKEN=%s\n' "$(gh auth token -h github.com)" > .dev.vars
+```
+
+`.dev.vars*` is git-ignored. Restart the dev server after creating it.
+
+A DataHub instance is not required to load a pull request; without one the UI
+reports DataHub as unavailable rather than substituting demo data.
 
 Run the repository checks with:
 

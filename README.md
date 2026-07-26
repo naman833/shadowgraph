@@ -222,20 +222,30 @@ curl 'http://localhost:3000/api/datahub/health'
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `GITHUB_TOKEN` | Optional | Server-side only. Increases GitHub API rate limits from 60 to 5000 req/hr. Never sent to the browser. |
+| `GITHUB_TOKEN` | Optional | Server-side only. Raises the GitHub API rate limit from 60 to 5000 req/hr and enables evidence-artifact download. Never sent to the browser. |
 | `DATAHUB_GMS_URL` | Optional | DataHub GMS URL (default: `http://localhost:8080`) |
 | `DATAHUB_GMS_TOKEN` | Optional | DataHub personal access token |
 
-### Troubleshooting GitHub rate limits
-
-Without `GITHUB_TOKEN`, the GitHub API allows 60 requests per hour. If you see
-"Rate limited" errors, set the token in your `.env` file:
+The application routes execute inside the Cloudflare Workers runtime, which does
+**not** inherit the shell environment. Exporting a variable before `npm run dev`
+has no effect on them; `process.env` inside a route is populated from
+`.dev.vars`. Create that file in the repository root:
 
 ```bash
-GITHUB_TOKEN=ghp_your_token_here
+printf 'GITHUB_TOKEN=%s\n' "$(gh auth token -h github.com)" > .dev.vars
 ```
 
-The token is only used server-side and is never exposed in API responses.
+`.dev.vars*` is git-ignored, so the token stays on your machine. Restart the dev
+server after creating or changing it. The CLI (`npm run analyze:pr`) runs in
+plain Node and does read an exported `GITHUB_TOKEN`.
+
+### Troubleshooting
+
+Without a token, the GitHub API allows 60 requests per hour and evidence
+artifacts cannot be downloaded, so the UI reports `GITHUB_TOKEN required for
+artifact download` and shows no replay measurements. Both symptoms are fixed by
+the `.dev.vars` file above. The token is only used server-side and is never
+included in an API response or the rendered page.
 
 ### Commit identity prevents stale evidence
 

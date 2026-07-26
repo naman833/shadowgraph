@@ -33,6 +33,10 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Cloudflare Workers local secrets. The dev server reads GITHUB_TOKEN and
+# DataHub settings from here, so it must never be committed.
+.dev.vars*
+
 # openai sites hosting (local config)
 /.openai/
 
