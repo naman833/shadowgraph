@@ -44,7 +44,9 @@ It uses **DataHub** as its context layer to understand what's connected, and an 
 | Node.js | ≥ 22.13 | Runtime |
 | npm | ≥ 10 | Package manager |
 | Git | Any | Clone the repo |
-| DataHub | Any (optional) | Live lineage context |
+| Docker Desktop | ≥ 4.x (optional) | Required for local DataHub |
+| Python | 3.8–3.11 (optional) | Required for `datahub` CLI |
+| DataHub CLI | Any (optional) | Live lineage context |
 | GitHub CLI (`gh`) | Any (optional) | Token for artifact download |
 
 ### 1. Clone and install
@@ -123,8 +125,17 @@ Restart the dev server. The token is server-side only and never sent to the brow
 ### 8. (Optional) Start local DataHub
 
 ```bash
+# Install the DataHub CLI (requires Python 3.8–3.11 and Docker running)
+pip install 'acryl-datahub[datahub-rest]'
+
+# Start DataHub (first run downloads ~4 GB of images)
 datahub docker quickstart
-npm run ingest:demo-lineage   # Loads datasets, lineage, owners
+
+# Initialize local credentials
+datahub init --username datahub --password datahub
+
+# Load ShadowGraph's demo datasets, lineage, and ownership
+npm run ingest:demo-lineage
 ```
 
 The UI header will change from "DataHub unavailable" to "DataHub connected".

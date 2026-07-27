@@ -46,9 +46,15 @@ npm run demo:golden
 Start the live context environment with the DataHub CLI and Docker:
 
 ```bash
+# Install the DataHub CLI (requires Python 3.8–3.11)
+pip install 'acryl-datahub[datahub-rest]'
+
+# Start DataHub (requires Docker Desktop running)
 datahub docker quickstart
 datahub init --username datahub --password datahub
-datahub datapack load showcase-ecommerce
+
+# Load ShadowGraph's demo datasets, lineage, and ownership
+npm run ingest:demo-lineage
 ```
 
 Open [http://localhost:9002](http://localhost:9002) and sign in with the local
